@@ -89,16 +89,16 @@ export default function App() {
   return (
     <LanguageProvider>
       <SpeechProvider>
-        {!currentUser ? (
-          <AuthPage onLoginSuccess={handleLoginSuccess} />
-        ) : (
-          <Layout
-            user={currentUser}
-            patient={currentPatient}
-            activeTab={activeTab}
-            onSelectTab={setActiveTab}
-            onLogout={handleLogout}
-          >
+          {!currentUser ? (
+            <AuthPage onLoginSuccess={handleLoginSuccess} />
+          ) : (
+            <Layout
+              user={currentUser}
+              patient={currentPatient}
+              activeTab={activeTab}
+              onSelectTab={setActiveTab}
+              onLogout={handleLogout}
+            >
             {/* Role-Guarded View Rendering */}
             {currentUser.role === "patient" && (
               <>

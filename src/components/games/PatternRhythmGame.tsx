@@ -53,6 +53,43 @@ const BASE_TILES: RhythmTile[] = [
   }
 ];
 
+// Harmonic tone frequencies for instant audio feedback
+const TILE_FREQUENCIES: Record<string, number> = {
+  blue: 261.63,   // C4
+  yellow: 329.63, // E4
+  green: 392.00,  // G4
+  red: 440.00,    // A4
+  purple: 523.25  // C5
+};
+
+const playTileSound = (tileId: string) => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    const freq = TILE_FREQUENCIES[tileId] || 440;
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.35);
+    setTimeout(() => {
+      ctx.close();
+    }, 400);
+  } catch {
+    // Graceful fallback if audio context is blocked
+  }
+};
+
 interface PatternRhythmGameProps {
   patientId: string;
   onClose: () => void;
@@ -62,12 +99,22 @@ export const PatternRhythmGame: React.FC<PatternRhythmGameProps> = ({ patientId,
   const { t, language } = useLanguage();
   const { speak } = useSpeech();
 
+  // Stable refs for speech and settings so speech state changes don't break playback intervals
+  const speakRef = useRef(speak);
+  speakRef.current = speak;
+  const languageRef = useRef(language);
+  languageRef.current = language;
+
   const [difficulty, setDifficulty] = useState<DifficultyLevel>("beginner");
   const [sequence, setSequence] = useState<RhythmTile[]>([]);
   const [playerInput, setPlayerInput] = useState<RhythmTile[]>([]);
   const [isPlayingSequence, setIsPlayingSequence] = useState(false);
+  const [playbackTrigger, setPlaybackTrigger] = useState(0);
   const [activePlaybackIndex, setActivePlaybackIndex] = useState<number | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const soundEnabledRef = useRef(soundEnabled);
+  soundEnabledRef.current = soundEnabled;
+
   const [score, setScore] = useState(100);
   const [timeTaken, setTimeTaken] = useState(0);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -75,7 +122,8 @@ export const PatternRhythmGame: React.FC<PatternRhythmGameProps> = ({ patientId,
   const [adaptiveNote, setAdaptiveNote] = useState<string | null>(null);
   const [round, setRound] = useState(1);
 
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const playbackTimerRef = useRef<number | null>(null);
 
   const generateSequence = (diff: DifficultyLevel, roundNum: number) => {
     // Beginner: 3-4 items, Moderate: 5 items, Advanced: 6 items
@@ -89,12 +137,15 @@ export const PatternRhythmGame: React.FC<PatternRhythmGameProps> = ({ patientId,
 
     setSequence(newSeq);
     setPlayerInput([]);
-    setIsPlayingSequence(true);
     setActivePlaybackIndex(null);
     setFeedback(null);
+    setIsPlayingSequence(true);
+    setPlaybackTrigger((k) => k + 1);
   };
 
   const startNewGame = (diff: DifficultyLevel = difficulty) => {
+    if (playbackTimerRef.current) clearTimeout(playbackTimerRef.current);
+    setActivePlaybackIndex(null);
     setScore(100);
     setTimeTaken(0);
     setRound(1);
@@ -108,6 +159,7 @@ export const PatternRhythmGame: React.FC<PatternRhythmGameProps> = ({ patientId,
     startNewGame(difficulty);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (playbackTimerRef.current) clearTimeout(playbackTimerRef.current);
     };
   }, [difficulty]);
 
@@ -117,7 +169,7 @@ export const PatternRhythmGame: React.FC<PatternRhythmGameProps> = ({ patientId,
       if (timerRef.current) clearInterval(timerRef.current);
       return;
     }
-    timerRef.current = setInterval(() => {
+    timerRef.current = window.setInterval(() => {
       setTimeTaken((prev) => prev + 1);
     }, 1000);
     return () => {
@@ -125,44 +177,79 @@ export const PatternRhythmGame: React.FC<PatternRhythmGameProps> = ({ patientId,
     };
   }, [isCompleted]);
 
-  // Play sequence animation
+  // Play sequence animation cleanly without external dependency churn
   useEffect(() => {
     if (!isPlayingSequence || sequence.length === 0) return;
 
-    let index = 0;
-    const interval = setInterval(() => {
-      if (index < sequence.length) {
-        setActivePlaybackIndex(index);
-        const tile = sequence[index];
-        if (soundEnabled) {
-          speak(tile.name[language] || tile.name.en, `rhythm-${index}`);
+    if (playbackTimerRef.current) {
+      clearTimeout(playbackTimerRef.current);
+    }
+
+    let currentIndex = 0;
+    let isCancelled = false;
+
+    const playNextStep = () => {
+      if (isCancelled) return;
+
+      if (currentIndex < sequence.length) {
+        setActivePlaybackIndex(currentIndex);
+        const tile = sequence[currentIndex];
+
+        if (soundEnabledRef.current) {
+          playTileSound(tile.id);
+          try {
+            speakRef.current(tile.name[languageRef.current] || tile.name.en, `rhythm-${currentIndex}`);
+          } catch {
+            // ignore speech error
+          }
         }
-        index++;
+
+        currentIndex++;
+        playbackTimerRef.current = window.setTimeout(playNextStep, 900);
       } else {
-        clearInterval(interval);
-        setTimeout(() => {
-          setActivePlaybackIndex(null);
-          setIsPlayingSequence(false);
+        playbackTimerRef.current = window.setTimeout(() => {
+          if (!isCancelled) {
+            setActivePlaybackIndex(null);
+            setIsPlayingSequence(false);
+          }
         }, 500);
       }
-    }, 900);
+    };
 
-    return () => clearInterval(interval);
-  }, [isPlayingSequence, sequence, soundEnabled, language, speak]);
+    // Slight initial pause before starting playback so the user sees the sequence track ready
+    playbackTimerRef.current = window.setTimeout(playNextStep, 400);
+
+    return () => {
+      isCancelled = true;
+      if (playbackTimerRef.current) {
+        clearTimeout(playbackTimerRef.current);
+      }
+    };
+  }, [isPlayingSequence, sequence, playbackTrigger]);
 
   const handleTilePress = (tile: RhythmTile) => {
     if (isPlayingSequence || isCompleted) return;
+    if (sequence.length === 0) return;
 
     const nextIndex = playerInput.length;
+    if (nextIndex >= sequence.length) return;
+
     const expected = sequence[nextIndex];
+    if (!expected) return;
 
     const newInput = [...playerInput, tile];
     setPlayerInput(newInput);
 
+    if (soundEnabledRef.current) {
+      playTileSound(tile.id);
+    }
+
     if (tile.id === expected.id) {
       // Correct step
-      if (soundEnabled) {
-        speak(tile.name[language] || tile.name.en, `tile-${nextIndex}`);
+      if (soundEnabledRef.current) {
+        try {
+          speakRef.current(tile.name[languageRef.current] || tile.name.en, `tile-${nextIndex}`);
+        } catch {}
       }
 
       if (newInput.length === sequence.length) {
@@ -179,7 +266,7 @@ export const PatternRhythmGame: React.FC<PatternRhythmGameProps> = ({ patientId,
       }
     } else {
       // Gentle incorrect feedback (never punishing)
-      const expectedName = expected.name[language] || expected.name.en;
+      const expectedName = expected.name[languageRef.current] || expected.name.en;
       setFeedback(t("game.feedback.incorrect", { answer: expectedName }));
       setScore((prev) => Math.max(40, prev - 15));
 
@@ -188,6 +275,7 @@ export const PatternRhythmGame: React.FC<PatternRhythmGameProps> = ({ patientId,
         setPlayerInput([]);
         setFeedback(null);
         setIsPlayingSequence(true);
+        setPlaybackTrigger((k) => k + 1);
       }, 1800);
     }
   };
@@ -237,7 +325,7 @@ export const PatternRhythmGame: React.FC<PatternRhythmGameProps> = ({ patientId,
           <button
             type="button"
             onClick={() => setSoundEnabled(!soundEnabled)}
-            className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600"
+            className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
             title={t("common.sound")}
             aria-label={t("common.sound")}
           >
@@ -247,10 +335,12 @@ export const PatternRhythmGame: React.FC<PatternRhythmGameProps> = ({ patientId,
             type="button"
             onClick={() => {
               setPlayerInput([]);
+              setFeedback(null);
               setIsPlayingSequence(true);
+              setPlaybackTrigger((k) => k + 1);
             }}
             disabled={isPlayingSequence}
-            className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600"
+            className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 disabled:opacity-40 cursor-pointer"
             title={t("common.hint")}
             aria-label={t("common.hint")}
           >
@@ -259,7 +349,7 @@ export const PatternRhythmGame: React.FC<PatternRhythmGameProps> = ({ patientId,
           <button
             type="button"
             onClick={() => startNewGame()}
-            className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600"
+            className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
             title={t("common.restart")}
             aria-label={t("common.restart")}
           >
@@ -268,7 +358,7 @@ export const PatternRhythmGame: React.FC<PatternRhythmGameProps> = ({ patientId,
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
             {t("common.home")}
@@ -314,6 +404,7 @@ export const PatternRhythmGame: React.FC<PatternRhythmGameProps> = ({ patientId,
             const isHighlighted = activePlaybackIndex === idx;
             const isEntered = idx < playerInput.length;
             const isCurrentPending = !isPlayingSequence && idx === playerInput.length;
+            const enteredTile = isEntered ? playerInput[idx] : null;
 
             return (
               <div
@@ -322,18 +413,18 @@ export const PatternRhythmGame: React.FC<PatternRhythmGameProps> = ({ patientId,
                   isHighlighted
                     ? "scale-110 shadow-lg ring-4 ring-white"
                     : isEntered
-                    ? "opacity-90 border-emerald-400 bg-slate-800"
+                    ? "opacity-95 border-emerald-400 shadow-sm"
                     : isCurrentPending
                     ? "border-amber-400 border-dashed animate-pulse bg-slate-800"
                     : "border-slate-700 bg-slate-800 opacity-60"
                 }`}
                 style={{
-                  backgroundColor: isHighlighted ? tile.color : undefined,
-                  borderColor: isHighlighted ? "#ffffff" : undefined
+                  backgroundColor: isHighlighted ? tile.color : isEntered && enteredTile ? enteredTile.color : undefined,
+                  borderColor: isHighlighted ? "#ffffff" : isEntered ? "#34d399" : undefined
                 }}
               >
-                {isEntered ? (
-                  <span className="text-2xl sm:text-3xl">{playerInput[idx].symbol}</span>
+                {isEntered && enteredTile ? (
+                  <span className="text-2xl sm:text-3xl text-white">{enteredTile.symbol}</span>
                 ) : isHighlighted ? (
                   <span className="text-2xl sm:text-3xl text-white">{tile.symbol}</span>
                 ) : (
