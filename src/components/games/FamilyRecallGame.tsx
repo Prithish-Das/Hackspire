@@ -283,6 +283,11 @@ export const FamilyRecallGame: React.FC<FamilyRecallGameProps> = ({ patientId, o
               src={currentQ.image}
               alt="Family Memory"
               className="max-h-[320px] w-auto max-w-full object-contain rounded-xl shadow-sm"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                // Graceful fallback to local SVG asset if external image fails
+                (e.currentTarget as HTMLImageElement).src = "/grandson_birthday.svg";
+              }}
             />
             {currentQ.context && (
               <span className="text-xs text-slate-500 mt-2 font-medium">{currentQ.context}</span>

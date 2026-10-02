@@ -264,7 +264,24 @@ export function savePrescription(prescription: Prescription): void {
 
 // Memory Album API (Feeds Game 3 & Caretaker Album)
 export function getMemoryAlbum(patientId?: string): MemoryAlbumItem[] {
-  const all = safeGet<MemoryAlbumItem[]>(KEYS.MEMORY_ALBUM, initialMemoryAlbum);
+  let all = safeGet<MemoryAlbumItem[]>(KEYS.MEMORY_ALBUM, initialMemoryAlbum);
+  // Auto-migrate ma-1 and ma-2 images if they point to the old unsplash links
+  let updated = false;
+  all = all.map((item) => {
+    if (item.id === "ma-1" && item.image.includes("unsplash")) {
+      updated = true;
+      return { ...item, image: "/graduation_family.jpg" };
+    }
+    if (item.id === "ma-2" && (item.image.includes("unsplash") || !item.image)) {
+      updated = true;
+      return { ...item, image: "/grandson_birthday.svg" };
+    }
+    return item;
+  });
+  if (updated) {
+    safeSet(KEYS.MEMORY_ALBUM, all);
+  }
+
   if (!patientId) return all;
   return all.filter((item) => item.patientId === patientId);
 }

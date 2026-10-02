@@ -207,6 +207,7 @@ export const MemoryLaneGame: React.FC<MemoryLaneGameProps> = ({ patientId, onClo
                 src={currentQ.image}
                 alt={currentQ.category}
                 className="max-h-[260px] w-auto max-w-full object-contain rounded-xl shadow-sm"
+                referrerPolicy="no-referrer"
               />
               {currentQ.imageMeta && (
                 <span className="text-[11px] text-slate-400 mt-1">
