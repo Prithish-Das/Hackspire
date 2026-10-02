@@ -13,7 +13,7 @@ This backend slice provides a deterministic, rule-based API for cognitive game s
 - **Framework:** FastAPI
 - **ORM / Models:** SQLModel (Pydantic + SQLAlchemy)
 - **Database:** SQLite (`backend/recalled.db`)
-- **Seeded Data:** Patient `p1` (Anand Sharma) and 5 cognitive domain baselines matching `src/data/initialData.ts`.
+- **Seeded Data:** Patient `p1` (Anand Sharma) and 5 cognitive domain baselines matching `frontend/src/data/initialData.ts`.
 
 ---
 

@@ -1,8 +1,47 @@
+# Dependencies
 node_modules/
-build/
+frontend/node_modules/
+.venv/
+venv/
+env/
+backend/.venv/
+backend/venv/
+
+# Build and distribution outputs
 dist/
+build/
+frontend/dist/
+frontend/build/
 coverage/
-.DS_Store
+frontend/coverage/
+*.egg-info/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+backend/__pycache__/
+.pytest_cache/
+backend/.pytest_cache/
+.mypy_cache/
+
+# SQLite databases & temp journals (preserve recalled.db if tracked, ignore journals and local tests)
+*.db-journal
+*.db-wal
+*.db-shm
+test.db
+
+# Logs and environment
 *.log
+.DS_Store
+Thumbs.db
 .env*
 !.env.example
+!frontend/.env.example
+!backend/.env.example
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -34,7 +34,7 @@ def init_db() -> None:
             )
             session.add(p1)
 
-        # Seed initial domain baselines matching src/data/initialData.ts
+        # Seed initial domain baselines matching frontend/src/data/initialData.ts
         initial_domains = [
             {"domain": "Memory & Attention", "running_avg": 82, "baseline": 78},
             {"domain": "Pattern Recognition & Attention", "running_avg": 76, "baseline": 74},
