@@ -359,6 +359,12 @@ export function getGameSessions(patientId?: string): GameSession[] {
 
 export function saveGameSession(session: GameSession): void {
   const all = getGameSessions();
+  const existingIndex = all.findIndex((s) => s.id === session.id);
+  if (existingIndex >= 0) {
+    all[existingIndex] = session;
+    safeSet(KEYS.GAME_SESSIONS, all);
+    return;
+  }
   all.unshift(session);
   safeSet(KEYS.GAME_SESSIONS, all);
   updateDomainStats(session.patientId, session.domain, session.score);

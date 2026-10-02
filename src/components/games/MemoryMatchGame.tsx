@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Volume2, VolumeX, RotateCcw, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { MATCH_ITEMS, MatchCardItem } from "../../data/memoryMatchAssets";
-import { DifficultyLevel, GameSession } from "../../types";
+import { DifficultyLevel, GameId, GameSession } from "../../types";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { useSpeech } from "../../contexts/SpeechContext";
 import { saveGameSession } from "../../utils/storage";
-import { calculateNextDifficulty } from "../../utils/adaptive";
+import { calculateNextDifficulty, getDomainRecommendations } from "../../utils/adaptive";
 import { SpeakButton } from "../common/SpeakButton";
+import { submitGameResultToBackend } from "../../services/gameApi";
 
 interface CardState {
   uid: string;
@@ -35,6 +36,14 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ patientId, onC
   const [isCompleted, setIsCompleted] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [adaptiveNote, setAdaptiveNote] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "synced" | "fallback">("idle");
+  const [recommendedGame, setRecommendedGame] = useState<GameId | null>(null);
+  const [weakestDomainInfo, setWeakestDomainInfo] = useState<{
+    domain: string;
+    statusLabel: string;
+    recommendedGameId: GameId;
+    runningAvg: number;
+  } | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -66,6 +75,9 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ patientId, onC
     setIsCompleted(false);
     setFeedback(null);
     setAdaptiveNote(null);
+    setSyncStatus("idle");
+    setRecommendedGame(null);
+    setWeakestDomainInfo(null);
   };
 
   useEffect(() => {
@@ -140,7 +152,7 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ patientId, onC
     }
   };
 
-  const handleGameComplete = () => {
+  const handleGameComplete = async () => {
     setIsCompleted(true);
     const finalScore = Math.max(50, score);
 
@@ -156,13 +168,33 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ patientId, onC
       result: "completed",
       date: new Date().toISOString()
     };
-    saveGameSession(session);
 
-    // Adaptive rule: ≥70% increase, <40% decrease
-    const adapt = calculateNextDifficulty(difficulty, finalScore);
-    setAdaptiveNote(adapt.explanation);
-    if (adapt.action === "increased" && difficulty !== adapt.nextDifficulty) {
-      setDifficulty(adapt.nextDifficulty);
+    setSyncStatus("saving");
+    const backendResult = await submitGameResultToBackend(session);
+
+    if (backendResult) {
+      setSyncStatus("synced");
+      setAdaptiveNote(backendResult.adaptiveExplanation);
+      setRecommendedGame(backendResult.recommendedGame);
+      setWeakestDomainInfo(backendResult.weakestDomain);
+      if (backendResult.nextDifficulty && difficulty !== backendResult.nextDifficulty) {
+        setDifficulty(backendResult.nextDifficulty);
+      }
+      // Save locally to keep other views (dashboard, progress charts) in sync without duplicate counting
+      saveGameSession(session);
+    } else {
+      setSyncStatus("fallback");
+      saveGameSession(session);
+      const adapt = calculateNextDifficulty(difficulty, finalScore);
+      setAdaptiveNote(adapt.explanation);
+      if (adapt.action === "increased" && difficulty !== adapt.nextDifficulty) {
+        setDifficulty(adapt.nextDifficulty);
+      }
+      const localRecs = getDomainRecommendations(patientId);
+      if (localRecs?.weakestDomain) {
+        setRecommendedGame(localRecs.weakestDomain.recommendedGameId);
+        setWeakestDomainInfo(localRecs.weakestDomain);
+      }
     }
   };
 
@@ -293,15 +325,64 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ patientId, onC
 
       {/* Game Completed Modal */}
       {isCompleted && (
-        <div className="mt-6 p-6 bg-blue-50 border border-blue-200 rounded-2xl text-center animate-fade-in">
-          <div className="w-12 h-12 mx-auto rounded-full bg-blue-600 text-white flex items-center justify-center mb-3">
+        <div className="mt-6 p-6 bg-blue-50 border border-blue-200 rounded-2xl text-center animate-fade-in space-y-4">
+          <div className="w-12 h-12 mx-auto rounded-full bg-blue-600 text-white flex items-center justify-center">
             <CheckCircle2 className="w-7 h-7" />
           </div>
-          <h3 className="text-xl font-bold text-slate-800">{t("game.feedback.completed")}</h3>
-          <p className="text-slate-600 mt-1">{t("game.feedback.sessionSummary", { score })}</p>
-          {adaptiveNote && <p className="text-xs text-blue-700 mt-2 font-medium">{adaptiveNote}</p>}
+          <div>
+            <h3 className="text-xl font-bold text-slate-800">{t("game.feedback.completed")}</h3>
+            <p className="text-slate-600 mt-1">{t("game.feedback.sessionSummary", { score })}</p>
+            {adaptiveNote && <p className="text-xs text-blue-700 mt-2 font-medium">{adaptiveNote}</p>}
+          </div>
 
-          <div className="flex flex-wrap justify-center gap-3 mt-5">
+          {/* Recommended Next Follow-up Exercise Card */}
+          {weakestDomainInfo && (
+            <div className="bg-white p-4 rounded-xl border border-blue-200 text-left max-w-md mx-auto shadow-xs">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 block mb-1">
+                Suggested Follow-up Practice
+              </span>
+              <p className="text-xs text-slate-600 mb-2">
+                Personalized practice based on your cognitive domain engagement:
+              </p>
+              <div className="flex items-center justify-between bg-blue-50/70 p-2.5 rounded-lg border border-blue-100">
+                <div>
+                  <span className="text-xs font-bold text-slate-800 block">
+                    Focus: {weakestDomainInfo.domain}
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Running Average: {weakestDomainInfo.runningAvg}% • {weakestDomainInfo.statusLabel}
+                  </span>
+                </div>
+                <span className="px-2.5 py-1 bg-blue-600 text-white text-[11px] font-bold rounded-md capitalize">
+                  {weakestDomainInfo.recommendedGameId.replace(/_/g, " ")}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Backend Sync / Storage Status Indicator */}
+          <div className="inline-flex items-center justify-center">
+            {syncStatus === "synced" && (
+              <span className="text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 text-[11px] font-medium flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Saved & analyzed by RECALLED backend
+              </span>
+            )}
+            {syncStatus === "fallback" && (
+              <span className="text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200 text-[11px] font-medium flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                Saved locally (Backend offline fallback)
+              </span>
+            )}
+            {syncStatus === "saving" && (
+              <span className="text-blue-700 bg-blue-100 px-2.5 py-0.5 rounded-full text-[11px] font-medium flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+                Saving session...
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap justify-center gap-3 pt-2">
             <button
               type="button"
               onClick={() => startNewGame()}
