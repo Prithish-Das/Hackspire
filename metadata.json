@@ -1,0 +1,6 @@
+{
+  "name": "RECALLED — Cognitive Care & Daily Assistance",
+  "description": "Remember More. Live Better. A non-diagnostic cognitive-care and daily-assistance platform for elderly users, their caregivers and doctors.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

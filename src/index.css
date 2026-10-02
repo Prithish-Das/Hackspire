@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  background-color: #f8fafc;
+  color: #1e293b;
+  margin: 0;
+  padding: 0;
+}
+
+img, svg, video, canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Accessibility Modes */
+body.text-large {
+  font-size: 1.125rem;
+}
+
+body.text-large h1 { font-size: 2rem; }
+body.text-large h2 { font-size: 1.6rem; }
+body.text-large h3 { font-size: 1.35rem; }
+body.text-large button, body.text-large input, body.text-large select {
+  font-size: 1.05rem;
+}
+
+body.text-extralarge {
+  font-size: 1.25rem;
+}
+
+body.text-extralarge h1 { font-size: 2.25rem; }
+body.text-extralarge h2 { font-size: 1.85rem; }
+body.text-extralarge h3 { font-size: 1.55rem; }
+body.text-extralarge button, body.text-extralarge input, body.text-extralarge select {
+  font-size: 1.15rem;
+}
+
+body.high-contrast {
+  background-color: #ffffff;
+  color: #000000;
+}
+
+body.high-contrast .bg-slate-50,
+body.high-contrast .bg-slate-100,
+body.high-contrast .bg-blue-50 {
+  background-color: #f1f5f9 !important;
+  border-color: #000000 !important;
+}
+
+body.high-contrast button {
+  border-width: 2px !important;
+  border-color: currentColor !important;
+}
+
+body.reduced-motion *,
+body.reduced-motion *::before,
+body.reduced-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+/* Print Styles for PDF / Print */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 12pt;
+  }
+  .no-print, header, nav, aside, .sidebar, .speak-btn, button:not(.printable) {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .page-break {
+    page-break-before: always;
+  }
+}
