@@ -7,10 +7,16 @@ import os
 from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from .adaptive import calculate_next_difficulty, update_running_average
-from .database import get_session
-from .main import app
-from .models import DomainStat, GameSessionRecord, Patient
+try:
+    from .adaptive import calculate_next_difficulty, update_running_average
+    from .database import get_session
+    from .main import app
+    from .models import DomainStat, GameSessionRecord, Patient
+except (ImportError, ValueError):
+    from adaptive import calculate_next_difficulty, update_running_average
+    from database import get_session
+    from main import app
+    from models import DomainStat, GameSessionRecord, Patient
 
 
 def test_adaptive_running_average_rule():

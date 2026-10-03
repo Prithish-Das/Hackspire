@@ -3,7 +3,10 @@ from pathlib import Path
 from typing import Generator
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from .models import DomainStat, Patient
+try:
+    from .models import DomainStat, Patient
+except (ImportError, ValueError):
+    from models import DomainStat, Patient
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "recalled.db"

@@ -13,27 +13,50 @@ from fastapi.responses import FileResponse, Response
 import httpx
 from sqlmodel import Session, select
 
-from .adaptive import (
-    DOMAIN_TO_GAME_MAP,
-    VALID_DIFFICULTIES,
-    VALID_DOMAINS,
-    VALID_GAMES,
-    calculate_next_difficulty,
-    get_domain_status_label,
-    update_running_average,
-)
-from .database import get_session, init_db
-from .models import DomainStat, GameSessionRecord, Patient
-from .schemas import (
-    DomainScoreInfo,
-    GameResultResponse,
-    GameResultSubmission,
-    GameSessionResponse,
-    HealthResponse,
-    RecommendationsResponse,
-    TTSRequest,
-    UpdatedDomainAverage,
-)
+try:
+    from .adaptive import (
+        DOMAIN_TO_GAME_MAP,
+        VALID_DIFFICULTIES,
+        VALID_DOMAINS,
+        VALID_GAMES,
+        calculate_next_difficulty,
+        get_domain_status_label,
+        update_running_average,
+    )
+    from .database import get_session, init_db
+    from .models import DomainStat, GameSessionRecord, Patient
+    from .schemas import (
+        DomainScoreInfo,
+        GameResultResponse,
+        GameResultSubmission,
+        GameSessionResponse,
+        HealthResponse,
+        RecommendationsResponse,
+        TTSRequest,
+        UpdatedDomainAverage,
+    )
+except (ImportError, ValueError):
+    from adaptive import (
+        DOMAIN_TO_GAME_MAP,
+        VALID_DIFFICULTIES,
+        VALID_DOMAINS,
+        VALID_GAMES,
+        calculate_next_difficulty,
+        get_domain_status_label,
+        update_running_average,
+    )
+    from database import get_session, init_db
+    from models import DomainStat, GameSessionRecord, Patient
+    from schemas import (
+        DomainScoreInfo,
+        GameResultResponse,
+        GameResultSubmission,
+        GameSessionResponse,
+        HealthResponse,
+        RecommendationsResponse,
+        TTSRequest,
+        UpdatedDomainAverage,
+    )
 
 logger = logging.getLogger("recalled.tts")
 
