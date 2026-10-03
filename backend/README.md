@@ -55,6 +55,7 @@ Interactive Swagger documentation is available at `http://127.0.0.1:8001/docs`.
 | `POST` | `/api/v1/games/results` | Save a completed game session, update running average (`round(old * 0.7 + score * 0.3)`), and compute next difficulty |
 | `GET` | `/api/v1/games/sessions?patientId=p1` | Retrieve historical game sessions for a patient |
 | `GET` | `/api/v1/games/recommendations?patientId=p1` | Retrieve domain averages, weakest domain, and next recommended game |
+| `POST` | `/api/tts` | ElevenLabs server-side TTS proxy with SHA-256 disk caching, language validation, and 400 char limit |
 
 ---
 

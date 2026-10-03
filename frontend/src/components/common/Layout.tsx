@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Menu,
   X,
@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { Role, User, Patient } from "../../types";
 import { useLanguage } from "../../contexts/LanguageContext";
+import { useSpeech } from "../../contexts/SpeechContext";
 import { LanguageSelector } from "./LanguageSelector";
 import { VoiceAssistantModal } from "../patient/VoiceAssistantModal";
 
@@ -43,8 +44,26 @@ export const Layout: React.FC<LayoutProps> = ({
   children
 }) => {
   const { t } = useLanguage();
+  const { stop } = useSpeech();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [voiceAssistantOpen, setVoiceAssistantOpen] = useState(false);
+
+  // Stop any active speech on route/tab change
+  useEffect(() => {
+    stop();
+  }, [activeTab, stop]);
+
+  // Stop speech on browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => stop();
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [stop]);
+
+  const handleLogout = () => {
+    stop();
+    onLogout();
+  };
 
   // Define sidebar navigation items per role strictly based on spec
   const getNavItems = () => {
@@ -169,7 +188,7 @@ export const Layout: React.FC<LayoutProps> = ({
             </span>
             <button
               type="button"
-              onClick={onLogout}
+              onClick={handleLogout}
               className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-slate-100 cursor-pointer"
               title={t("auth.logout")}
               aria-label={t("auth.logout")}
@@ -276,7 +295,7 @@ export const Layout: React.FC<LayoutProps> = ({
               <div className="pt-3 border-t border-slate-100 space-y-2">
                 <button
                   type="button"
-                  onClick={onLogout}
+                  onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-rose-600 hover:bg-rose-50"
                 >
                   <LogOut className="w-4 h-4" />

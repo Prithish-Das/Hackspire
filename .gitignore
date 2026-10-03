@@ -31,6 +31,11 @@ backend/.pytest_cache/
 *.db-shm
 test.db
 
+# Audio cache
+audio_cache/
+backend/audio_cache/
+*.mp3
+
 # Logs and environment
 *.log
 .DS_Store

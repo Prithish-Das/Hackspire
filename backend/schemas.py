@@ -62,3 +62,9 @@ class RecommendationsResponse(BaseModel):
     weakestDomain: DomainScoreInfo
     recommendedGame: str
     currentDifficulty: str
+
+
+class TTSRequest(BaseModel):
+    text: str = Field(..., description="Text content to synthesize (up to 400 characters)")
+    language: str = Field(default="en", description="Target language code: en, bn, or hi")
+    gender: Optional[str] = Field(default="female", description="Voice gender preference: female or male")

@@ -145,6 +145,10 @@ npm --prefix frontend run build
 | `DATABASE_URL` | `sqlite:///./recalled.db` | SQLAlchemy/SQLModel connection string |
 | `ALLOWED_ORIGINS` | `http://localhost:3000,...` | Comma-separated list of allowed CORS origins |
 | `PORT` | `8001` | Default listening port |
+| `ELEVENLABS_API_KEY` | *(empty / optional)* | ElevenLabs API key (server-side only, never exposed to frontend or logs) |
+| `ELEVENLABS_VOICE_ID` | `21m00Tcm4TlvDq8ikWAM` | Voice ID for calm, warm companion voice (defaults to Rachel) |
+| `ELEVENLABS_MALE_VOICE_ID` | `pNInz6obpgDQGcFmaJgB` | Optional male voice ID (defaults to Adam) |
+| `TTS_CACHE_DIR` | `./audio_cache` | Safe disk cache directory for SHA-256 hashed audio files |
 
 ---
 

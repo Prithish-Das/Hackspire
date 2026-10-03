@@ -1,6 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from "react";
 import { useLanguage } from "./LanguageContext";
-import { selectBestVoice, SpeechGender, getLocaleCode } from "../utils/speech";
+import {
+  SpeechGender,
+  speakWithFallback,
+  ActivePlaybackHandle,
+} from "../utils/speech";
 
 interface SpeechContextType {
   speak: (text: string, id?: string) => void;
@@ -25,7 +29,7 @@ export const SpeechProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const activeHandleRef = useRef<ActivePlaybackHandle | null>(null);
 
   const [speechGender, setSpeechGenderState] = useState<SpeechGender>(() => {
     try {
@@ -45,7 +49,7 @@ export const SpeechProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  // Populate voices and listen for voiceschanged
+  // Populate browser voices and listen for voiceschanged (for browser fallback)
   useEffect(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       return;
@@ -66,45 +70,59 @@ export const SpeechProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
   }, []);
 
-  // Stop speech when language changes
-  useEffect(() => {
-    stop();
-  }, [language]);
-
   const stop = useCallback(() => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
+    if (activeHandleRef.current) {
+      activeHandleRef.current.stop();
+      activeHandleRef.current = null;
     }
-    currentUtteranceRef.current = null;
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // Ignore
+      }
+    }
     setIsSpeaking(false);
     setIsPaused(false);
     setActiveId(null);
   }, []);
 
   const pause = useCallback(() => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.speaking) {
+    if (activeHandleRef.current) {
+      activeHandleRef.current.pause();
+    } else if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.speaking) {
       window.speechSynthesis.pause();
-      setIsPaused(true);
     }
+    setIsPaused(true);
   }, []);
 
   const resume = useCallback(() => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.paused) {
+    if (activeHandleRef.current) {
+      activeHandleRef.current.resume();
+    } else if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.paused) {
       window.speechSynthesis.resume();
-      setIsPaused(false);
     }
+    setIsPaused(false);
   }, []);
+
+  // Stop speech when language changes
+  useEffect(() => {
+    stop();
+  }, [language, stop]);
+
+  // Clean up all audio/speech resources on unmount
+  useEffect(() => {
+    return () => {
+      stop();
+    };
+  }, [stop]);
 
   const speak = useCallback(
     (text: string, id: string = "default") => {
-      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-        return;
-      }
-
       const cleanText = text.trim();
       if (!cleanText) return;
 
-      // If already playing this item, toggle pause
+      // If already playing this item, toggle pause/resume
       if (activeId === id && isSpeaking) {
         if (isPaused) {
           resume();
@@ -114,47 +132,46 @@ export const SpeechProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         return;
       }
 
-      // Stop any prior speech
-      window.speechSynthesis.cancel();
+      // Stop any prior speech (strict one-readout-at-a-time rule)
+      stop();
 
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.rate = 0.95; // Spec: ~0.95 rate
-      utterance.pitch = 1.0;
-      utterance.lang = getLocaleCode(language);
+      setActiveId(id);
+      setIsSpeaking(true);
+      setIsPaused(false);
 
-      const voice = selectBestVoice(voices, language, speechGender);
-      if (voice) {
-        utterance.voice = voice;
-      }
+      const handle = speakWithFallback({
+        text: cleanText,
+        language,
+        preferredGender: speechGender,
+        voices,
+        onStart: () => {
+          setIsSpeaking(true);
+          setIsPaused(false);
+          setActiveId(id);
+        },
+        onPause: () => {
+          setIsPaused(true);
+        },
+        onResume: () => {
+          setIsPaused(false);
+        },
+        onEnd: () => {
+          setIsSpeaking(false);
+          setIsPaused(false);
+          setActiveId((curr) => (curr === id ? null : curr));
+          activeHandleRef.current = null;
+        },
+        onError: () => {
+          setIsSpeaking(false);
+          setIsPaused(false);
+          setActiveId((curr) => (curr === id ? null : curr));
+          activeHandleRef.current = null;
+        },
+      });
 
-      utterance.onstart = () => {
-        setIsSpeaking(true);
-        setIsPaused(false);
-        setActiveId(id);
-      };
-
-      utterance.onend = () => {
-        setIsSpeaking(false);
-        setIsPaused(false);
-        setActiveId(null);
-        currentUtteranceRef.current = null;
-      };
-
-      utterance.onerror = (e) => {
-        // Silent graceful fallback, don't crash
-        if (e.error !== "canceled" && e.error !== "interrupted") {
-          console.warn("Speech synthesis notice:", e.error);
-        }
-        setIsSpeaking(false);
-        setIsPaused(false);
-        setActiveId(null);
-        currentUtteranceRef.current = null;
-      };
-
-      currentUtteranceRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
+      activeHandleRef.current = handle;
     },
-    [activeId, isSpeaking, isPaused, language, voices, speechGender, pause, resume]
+    [activeId, isSpeaking, isPaused, language, speechGender, voices, stop, pause, resume]
   );
 
   return (
@@ -169,7 +186,7 @@ export const SpeechProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         activeId,
         speechGender,
         setSpeechGender,
-        hasVoices: voices.length > 0
+        hasVoices: voices.length > 0 || true
       }}
     >
       {children}

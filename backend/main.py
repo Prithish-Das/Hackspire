@@ -1,11 +1,16 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import hashlib
+import logging
 import os
-import uuid
+from pathlib import Path
 from typing import List, Optional
+import uuid
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
+import httpx
 from sqlmodel import Session, select
 
 from .adaptive import (
@@ -26,8 +31,30 @@ from .schemas import (
     GameSessionResponse,
     HealthResponse,
     RecommendationsResponse,
+    TTSRequest,
     UpdatedDomainAverage,
 )
+
+logger = logging.getLogger("recalled.tts")
+
+BASE_DIR = Path(__file__).resolve().parent
+ENV_PATH = BASE_DIR / ".env"
+if ENV_PATH.exists():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(dotenv_path=ENV_PATH)
+    except ImportError:
+        with open(ENV_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    k, v = k.strip(), v.strip().strip("'\"")
+                    if k not in os.environ:
+                        os.environ[k] = v
+
+TTS_CACHE_DIR_DEFAULT = BASE_DIR / "audio_cache"
+SUPPORTED_LANGUAGES = {"en", "bn", "hi"}
 
 
 @asynccontextmanager
@@ -355,4 +382,149 @@ def get_patient_recommendations(
         weakestDomain=weakest,
         recommendedGame=weakest.recommendedGameId,
         currentDifficulty=current_diff,
+    )
+
+
+@app.post("/api/tts", tags=["TTS"])
+@app.post("/api/v1/tts", tags=["TTS"])
+async def synthesize_speech(request: TTSRequest):
+    """
+    Server-side proxy to ElevenLabs Text-to-Speech API with on-disk caching.
+    - Limits text to <= 400 characters (returns 400 if exceeded or empty)
+    - Validates supported languages (en, bn, hi)
+    - Caches synthesized audio on disk using SHA-256 hash (never leaks personal data or secrets)
+    - Selects warm, calm voice settings tailored for an older adult companion
+    - Protects credentials (API key is never returned or logged)
+    """
+    # 1. Validate Text input
+    clean_text = (request.text or "").strip()
+    if not clean_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Text cannot be empty.",
+        )
+    if len(clean_text) > 400:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Text length ({len(clean_text)} characters) exceeds 400 character limit.",
+        )
+
+    # 2. Validate Language input
+    norm_lang = (request.language or "en").strip().lower()
+    if "-" in norm_lang:
+        norm_lang = norm_lang.split("-")[0]
+    if norm_lang not in SUPPORTED_LANGUAGES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported language '{request.language}'. Supported languages: en (English), bn (Bengali), hi (Hindi).",
+        )
+
+    # 3. Read Environment Configuration dynamically
+    api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    female_voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM").strip()
+    male_voice_id = os.environ.get("ELEVENLABS_MALE_VOICE_ID", "pNInz6obpgDQGcFmaJgB").strip()
+
+    gender = (request.gender or "female").strip().lower()
+    voice_id = male_voice_id if gender == "male" and male_voice_id else female_voice_id
+
+    # 4. Safe configurable disk cache
+    cache_dir_str = os.environ.get("TTS_CACHE_DIR", str(TTS_CACHE_DIR_DEFAULT))
+    cache_dir = Path(cache_dir_str)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Deterministic SHA-256 hash: contains only voice_id, normalized language, and text
+    # Filename contains NO personal information, user IDs, or credentials
+    cache_key = hashlib.sha256(f"{voice_id}:{norm_lang}:{clean_text}".encode("utf-8")).hexdigest()
+    cache_file = cache_dir / f"{cache_key}.mp3"
+
+    # Return cached audio if present
+    if cache_file.is_file() and cache_file.stat().st_size > 0:
+        return FileResponse(
+            path=str(cache_file),
+            media_type="audio/mpeg",
+            headers={
+                "X-Cache": "HIT",
+                "Cache-Control": "public, max-age=86400",
+            },
+        )
+
+    # 5. Check if ElevenLabs is configured; return 503 so frontend gracefully falls back to browser TTS
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ElevenLabs TTS service is not configured. (ELEVENLABS_API_KEY missing)",
+        )
+
+    # 6. Upstream ElevenLabs API call
+    elevenlabs_url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+
+    # Calm, friendly, respectful companion voice settings:
+    # - model: eleven_multilingual_v2 (supports en, bn, hi with natural cadence)
+    # - stability: 0.65 (reassuring, steady pacing without sudden volume/pitch swings)
+    # - similarity_boost: 0.80 (warm, authentic tone)
+    # - style: 0.05 (conversational and respectful, avoids exaggerated dramatics)
+    payload = {
+        "text": clean_text,
+        "model_id": "eleven_multilingual_v2",
+        "voice_settings": {
+            "stability": 0.65,
+            "similarity_boost": 0.80,
+            "style": 0.05,
+            "use_speaker_boost": True,
+        },
+    }
+    headers = {
+        "xi-api-key": api_key,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
+    }
+    params = {
+        "output_format": "mp3_44100_128",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                elevenlabs_url,
+                headers=headers,
+                params=params,
+                json=payload,
+            )
+    except Exception as exc:
+        logger.warning("TTS request failed to connect to ElevenLabs: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to communicate with ElevenLabs TTS service.",
+        )
+
+    if response.status_code != 200:
+        logger.warning("ElevenLabs API returned error status: %d", response.status_code)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"ElevenLabs TTS service returned status {response.status_code}.",
+        )
+
+    audio_bytes = response.content
+    if not audio_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Received empty audio from ElevenLabs TTS service.",
+        )
+
+    # 7. Write to cache atomically
+    try:
+        temp_file = cache_file.with_suffix(".tmp")
+        with open(temp_file, "wb") as f:
+            f.write(audio_bytes)
+        temp_file.replace(cache_file)
+    except Exception as write_err:
+        logger.warning("Could not persist audio cache: %s", write_err)
+
+    return Response(
+        content=audio_bytes,
+        media_type="audio/mpeg",
+        headers={
+            "X-Cache": "MISS",
+            "Cache-Control": "public, max-age=86400",
+        },
     )
