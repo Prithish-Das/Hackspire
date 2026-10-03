@@ -9,7 +9,7 @@ DOMAIN_TO_GAME_MAP: Dict[str, str] = {
     "Pattern Recognition": "complete_the_pattern",
 }
 
-VALID_DIFFICULTIES = ["beginner", "moderate", "advanced"]
+VALID_DIFFICULTIES = ["beginner", "moderate", "advanced", "pro"]
 VALID_GAMES = list(DOMAIN_TO_GAME_MAP.values())
 VALID_DOMAINS = list(DOMAIN_TO_GAME_MAP.keys())
 
@@ -26,7 +26,7 @@ def update_running_average(old_average: int, score: int) -> int:
 def calculate_next_difficulty(current_difficulty: str, score_pct: int) -> Tuple[str, str, str]:
     """
     Adaptive difficulty calculation matching src/utils/adaptive.ts:
-    - Score >= 70: increase difficulty by one level (clamped at advanced)
+    - Score >= 70: increase difficulty by one level (clamped at pro)
     - Score < 40: decrease difficulty by one level (clamped at beginner)
     - Otherwise: maintain current level
     Returns: (next_difficulty, action, explanation)
@@ -39,17 +39,18 @@ def calculate_next_difficulty(current_difficulty: str, score_pct: int) -> Tuple[
         if diff == "beginner":
             return ("moderate", "increased", "Great recall! Advancing to moderate practice.")
         if diff == "moderate":
-            return ("advanced", "increased", "Excellent engagement! Moving to advanced exercises.")
-        return ("advanced", "maintained", "Outstanding performance! Maintaining top level.")
+            return ("pro", "increased", "Excellent engagement! Moving to pro exercises.")
+        return ("pro", "maintained", "Outstanding performance! Maintaining top level.")
 
     if score_pct < 40:
-        if diff == "advanced":
+        if diff in ("advanced", "pro"):
             return ("moderate", "decreased", "Adjusting to a gentler pace with supportive practice.")
         if diff == "moderate":
             return ("beginner", "decreased", "Adjusting to comfortable beginner exercises.")
         return ("beginner", "maintained", "Continuing gentle practice at this foundational level.")
 
-    return (diff, "maintained", "Steady performance! Continuing at current pace.")
+    target_diff = "pro" if diff == "advanced" else diff
+    return (target_diff, "maintained", "Steady performance! Continuing at current pace.")
 
 
 def get_domain_status_label(running_avg: int) -> str:

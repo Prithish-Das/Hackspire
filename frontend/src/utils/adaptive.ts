@@ -27,20 +27,20 @@ export function calculateNextDifficulty(
     }
     if (currentDifficulty === "moderate") {
       return {
-        nextDifficulty: "advanced",
+        nextDifficulty: "pro",
         action: "increased",
-        explanation: "Excellent engagement! Moving to advanced exercises."
+        explanation: "Excellent engagement! Moving to pro exercises."
       };
     }
     return {
-      nextDifficulty: "advanced",
+      nextDifficulty: "pro",
       action: "maintained",
       explanation: "Outstanding performance! Maintaining top level."
     };
   }
 
   if (scorePct < 40) {
-    if (currentDifficulty === "advanced") {
+    if (currentDifficulty === "advanced" || currentDifficulty === "pro") {
       return {
         nextDifficulty: "moderate",
         action: "decreased",
@@ -61,8 +61,9 @@ export function calculateNextDifficulty(
     };
   }
 
+  const targetDiff = currentDifficulty === "advanced" ? "pro" : currentDifficulty;
   return {
-    nextDifficulty: currentDifficulty,
+    nextDifficulty: targetDiff,
     action: "maintained",
     explanation: "Steady performance! Continuing at current pace."
   };

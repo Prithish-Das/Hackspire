@@ -206,6 +206,9 @@ def save_game_result(
                 difficulty=existing_session.difficulty,
                 result=existing_session.result,
                 date=existing_session.date,
+                accuracy=existing_session.accuracy,
+                attempts=existing_session.attempts,
+                mistakes=existing_session.mistakes,
             ),
             updatedDomainAverage=UpdatedDomainAverage(
                 domain=submission.domain,
@@ -230,6 +233,9 @@ def save_game_result(
         difficulty=difficulty,
         result=submission.result,
         date=submission.date or datetime.now(timezone.utc).isoformat(),
+        accuracy=submission.accuracy,
+        attempts=submission.attempts,
+        mistakes=submission.mistakes,
     )
     db.add(session_record)
 
@@ -289,6 +295,9 @@ def save_game_result(
             difficulty=session_record.difficulty,
             result=session_record.result,
             date=session_record.date,
+            accuracy=session_record.accuracy,
+            attempts=session_record.attempts,
+            mistakes=session_record.mistakes,
         ),
         updatedDomainAverage=UpdatedDomainAverage(
             domain=submission.domain,

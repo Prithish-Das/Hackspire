@@ -15,9 +15,12 @@ class GameResultSubmission(BaseModel):
     domain: str = Field(..., description="Cognitive domain e.g. Memory & Attention")
     score: int = Field(..., ge=0, le=100, description="Score percentage 0 to 100")
     timeTaken: int = Field(..., ge=0, description="Seconds taken to finish")
-    difficulty: str = Field(..., description="beginner, moderate, or advanced")
+    difficulty: str = Field(..., description="beginner, moderate, pro, or advanced")
     result: str = Field(default="completed", description="completed or abandoned")
     date: Optional[str] = Field(default=None, description="ISO timestamp")
+    accuracy: Optional[int] = Field(default=None, ge=0, le=100, description="Accuracy percentage 0 to 100")
+    attempts: Optional[int] = Field(default=None, ge=0, description="Total attempts made")
+    mistakes: Optional[int] = Field(default=None, ge=0, description="Total mistakes or errors")
 
 
 class GameSessionResponse(BaseModel):
@@ -30,6 +33,9 @@ class GameSessionResponse(BaseModel):
     difficulty: str
     result: str
     date: str
+    accuracy: Optional[int] = None
+    attempts: Optional[int] = None
+    mistakes: Optional[int] = None
 
 
 class UpdatedDomainAverage(BaseModel):

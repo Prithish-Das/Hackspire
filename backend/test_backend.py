@@ -34,16 +34,24 @@ def test_adaptive_difficulty_progression():
     assert action == "increased"
 
     next_diff, action, _ = calculate_next_difficulty("moderate", 70)
-    assert next_diff == "advanced"
+    assert next_diff in ("advanced", "pro")
     assert action == "increased"
 
-    # advanced clamped at max
+    # advanced/pro clamped at max
     next_diff, action, _ = calculate_next_difficulty("advanced", 95)
-    assert next_diff == "advanced"
+    assert next_diff in ("advanced", "pro")
+    assert action == "maintained"
+
+    next_diff, action, _ = calculate_next_difficulty("pro", 95)
+    assert next_diff in ("advanced", "pro")
     assert action == "maintained"
 
     # < 40 decreases
     next_diff, action, _ = calculate_next_difficulty("advanced", 35)
+    assert next_diff == "moderate"
+    assert action == "decreased"
+
+    next_diff, action, _ = calculate_next_difficulty("pro", 35)
     assert next_diff == "moderate"
     assert action == "decreased"
 
@@ -126,6 +134,34 @@ def test_api_submit_result_and_idempotency():
     sessions = sessions_res.json()
     matching = [s for s in sessions if s["id"] == session_id]
     assert len(matching) == 1
+
+
+def test_api_submit_pro_difficulty():
+    client = TestClient(app)
+    session_id = f"test-pro-{os.urandom(4).hex()}"
+
+    payload = {
+        "id": session_id,
+        "patientId": "p1",
+        "gameId": "memory_match",
+        "domain": "Memory & Attention",
+        "score": 95,
+        "timeTaken": 38,
+        "difficulty": "pro",
+        "result": "completed",
+        "accuracy": 92,
+        "attempts": 12,
+        "mistakes": 2,
+    }
+
+    res = client.post("/api/v1/games/results", json=payload)
+    assert res.status_code == 201
+    data = res.json()
+    assert data["session"]["difficulty"] == "pro"
+    assert data["session"]["accuracy"] == 92
+    assert data["session"]["attempts"] == 12
+    assert data["session"]["mistakes"] == 2
+
 
 
 def test_api_error_validation():
@@ -254,6 +290,7 @@ if __name__ == "__main__":
     test_api_health()
     test_api_seeded_patient_and_recommendations()
     test_api_submit_result_and_idempotency()
+    test_api_submit_pro_difficulty()
     test_api_error_validation()
     test_api_tts_validation()
     test_api_tts_service_unconfigured()

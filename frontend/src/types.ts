@@ -16,7 +16,7 @@ export type GameId =
   | "memory_lane"
   | "complete_the_pattern";
 
-export type DifficultyLevel = "beginner" | "moderate" | "advanced";
+export type DifficultyLevel = "beginner" | "moderate" | "pro" | "advanced";
 
 export interface Patient {
   id: string;
@@ -75,6 +75,9 @@ export interface GameSession {
   difficulty: DifficultyLevel;
   result: "completed" | "abandoned";
   date: string; // ISO date string
+  accuracy?: number; // percentage 0-100
+  attempts?: number;
+  mistakes?: number;
 }
 
 export interface DomainStats {

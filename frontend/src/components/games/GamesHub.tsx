@@ -170,12 +170,19 @@ export const GamesHub: React.FC<GamesHubProps> = ({ patientId }) => {
                   >
                     {domain}
                   </span>
-                  {isRecommended && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
-                      <Award className="w-3 h-3 text-amber-600" />
-                      Recommended
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {["memory_match", "pattern_rhythm", "complete_the_pattern"].includes(game.id) && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+                        🟢 🟡 🔴 3 Levels
+                      </span>
+                    )}
+                    {isRecommended && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
+                        <Award className="w-3 h-3 text-amber-600" />
+                        Recommended
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Title & Icon */}

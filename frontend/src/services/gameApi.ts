@@ -11,6 +11,9 @@ export interface BackendGameResultResponse {
     difficulty: string;
     result: string;
     date: string;
+    accuracy?: number;
+    attempts?: number;
+    mistakes?: number;
   };
   updatedDomainAverage: {
     domain: string;
@@ -92,7 +95,10 @@ export async function submitGameResultToBackend(
       timeTaken: session.timeTaken,
       difficulty: session.difficulty,
       result: session.result,
-      date: session.date
+      date: session.date,
+      accuracy: session.accuracy,
+      attempts: session.attempts,
+      mistakes: session.mistakes
     };
 
     const res = await fetch(`${API_BASE_URL}/games/results`, {

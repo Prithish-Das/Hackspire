@@ -36,3 +36,6 @@ class GameSessionRecord(SQLModel, table=True):
     date: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
+    accuracy: Optional[int] = Field(default=None)
+    attempts: Optional[int] = Field(default=None)
+    mistakes: Optional[int] = Field(default=None)

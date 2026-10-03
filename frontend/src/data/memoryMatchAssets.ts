@@ -76,5 +76,48 @@ export const MATCH_ITEMS: MatchCardItem[] = [
     symbol: "☕",
     color: "#b45309",
     bgLight: "#fef3c7"
+  },
+  {
+    id: "marigold",
+    name: { en: "Marigold Flower (Genda)", bn: "গাঁদা ফুল", hi: "गेंदे का फूल" },
+    symbol: "🌼",
+    color: "#eab308",
+    bgLight: "#fef9c3"
+  },
+  {
+    id: "elephant",
+    name: { en: "Royal Elephant (Gajraj)", bn: "রাজকীয় হাতি", hi: "शाही हाथी (गजराज)" },
+    symbol: "🐘",
+    color: "#475569",
+    bgLight: "#f1f5f9"
+  },
+  {
+    id: "sweets",
+    name: { en: "Festive Laddoo (Mithai)", bn: "উৎসবের লাড্ডু (মিষ্টি)", hi: "उत्सव का लड्डू (मिठाई)" },
+    symbol: "🥮",
+    color: "#f97316",
+    bgLight: "#ffedd5"
+  },
+  {
+    id: "kite",
+    name: { en: "Festival Kite (Patang)", bn: "উৎসবের ঘুড়ি", hi: "त्योहार की पतंग" },
+    symbol: "🪁",
+    color: "#06b6d4",
+    bgLight: "#cffafe"
+  },
+  {
+    id: "bell",
+    name: { en: "Temple Bell (Ghanti)", bn: "মন্দিরের ঘণ্টা", hi: "मंदिर की घंटी" },
+    symbol: "🔔",
+    color: "#ca8a04",
+    bgLight: "#fef08a"
+  },
+  {
+    id: "banyan",
+    name: { en: "Banyan Tree (Bargad)", bn: "বটবৃক্ষ (বটগাছ)", hi: "बरगद का पेड़" },
+    symbol: "🌳",
+    color: "#15803d",
+    bgLight: "#dcfce7"
   }
 ];
+

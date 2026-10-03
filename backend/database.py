@@ -22,6 +22,22 @@ def init_db() -> None:
     """Create all tables and seed patient p1 with baseline stats if not present."""
     SQLModel.metadata.create_all(engine)
 
+    # Safe lightweight migration for added columns in SQLite
+    if "sqlite" in DATABASE_URL:
+        try:
+            with engine.connect() as conn:
+                res = conn.exec_driver_sql("PRAGMA table_info(gamesessionrecord)").fetchall()
+                existing_cols = {row[1] for row in res}
+                if "accuracy" not in existing_cols:
+                    conn.exec_driver_sql("ALTER TABLE gamesessionrecord ADD COLUMN accuracy INTEGER")
+                if "attempts" not in existing_cols:
+                    conn.exec_driver_sql("ALTER TABLE gamesessionrecord ADD COLUMN attempts INTEGER")
+                if "mistakes" not in existing_cols:
+                    conn.exec_driver_sql("ALTER TABLE gamesessionrecord ADD COLUMN mistakes INTEGER")
+                conn.commit()
+        except Exception:
+            pass
+
     with Session(engine) as session:
         # Check if patient p1 exists
         p1 = session.get(Patient, "p1")
