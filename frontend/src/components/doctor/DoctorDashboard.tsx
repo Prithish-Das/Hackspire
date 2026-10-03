@@ -10,7 +10,8 @@ import {
   Droplet,
   CheckCircle2,
   Clock,
-  Sparkles
+  Sparkles,
+  Calculator
 } from "lucide-react";
 import { Doctor, Patient } from "../../types";
 import { useLanguage } from "../../contexts/LanguageContext";
@@ -21,6 +22,7 @@ import {
   getWaterEvents,
   getPrescriptions
 } from "../../utils/storage";
+import { computeCognitiveRegression } from "../../utils/regression";
 import { MemoryImprovement } from "./MemoryImprovement";
 import { WeeklyMemoryChart } from "./WeeklyMemoryChart";
 import { WeeklyWaterChart } from "../caregiver/WeeklyWaterChart";
@@ -58,6 +60,9 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
   const memoryDomain = domainStats.find((d) => d.domain === "Memory & Attention");
   const recallDomain = domainStats.find((d) => d.domain === "Recall");
   const patternDomain = domainStats.find((d) => d.domain === "Pattern Recognition");
+
+  // Predictive Linear Regression
+  const regression = computeCognitiveRegression(gameSessions, memoryDomain?.runningAvg);
 
   return (
     <div className="space-y-6">
@@ -210,6 +215,147 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
 
           {/* Two-Line Pattern Graph (Memory vs Activity Completion) */}
           <WeeklyMemoryChart patientId={currentPatient.id} />
+
+          {/* Predictive Cognitive Trajectory (Linear Regression Model) */}
+          <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                  <Calculator className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <span>Predictive Cognitive Trajectory</span>
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                      OLS Multiple Regression
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Multivariate empirical least-squares projection based on longitudinal session dynamics.
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-left sm:text-right">
+                <span className="text-[11px] font-medium text-slate-500 block">Model Status</span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  {regression.status === "trained_ols" ? `Active Fit (${regression.sampleSize} Sessions)` : "Clinical Baseline Prior"}
+                </span>
+              </div>
+            </div>
+
+            {/* Regression Summary Stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+              <div className="p-3.5 bg-blue-50/70 rounded-xl border border-blue-100">
+                <span className="text-[11px] text-blue-700 font-semibold block uppercase tracking-wider">
+                  Forecasted Score (Ŷ)
+                </span>
+                <span className="text-2xl font-black text-blue-900 mt-1 block">
+                  {regression.predictedNextScore}%
+                </span>
+                <span className="text-[10px] text-blue-600 mt-0.5 block">
+                  Next predicted session
+                </span>
+              </div>
+
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[11px] text-slate-600 font-semibold block uppercase tracking-wider">
+                  Model Fit (R²)
+                </span>
+                <span className="text-2xl font-black text-slate-800 mt-1 block">
+                  {regression.rSquared.toFixed(2)}
+                </span>
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  Variance explained ({Math.round(regression.rSquared * 100)}%)
+                </span>
+              </div>
+
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[11px] text-slate-600 font-semibold block uppercase tracking-wider">
+                  RMSE Error
+                </span>
+                <span className="text-2xl font-black text-slate-800 mt-1 block">
+                  ±{regression.rmse.toFixed(1)}
+                </span>
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  Score points residual
+                </span>
+              </div>
+
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[11px] text-slate-600 font-semibold block uppercase tracking-wider">
+                  Trained Pairs
+                </span>
+                <span className="text-2xl font-black text-slate-800 mt-1 block">
+                  {regression.trainedPairs}
+                </span>
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  Sequential observations
+                </span>
+              </div>
+            </div>
+
+            {/* Formula & Coefficients Breakdown */}
+            <div className="p-4 bg-slate-900 text-white rounded-xl space-y-3 font-mono text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                <span className="text-slate-400 font-sans text-xs font-semibold uppercase tracking-wider">
+                  Fitted Regression Equation
+                </span>
+                <span className="text-[11px] text-blue-400 font-sans">
+                  Objective: min ∑(yᵢ - ŷᵢ)²
+                </span>
+              </div>
+              <div className="text-blue-300 font-bold overflow-x-auto py-1">
+                {regression.formula}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-slate-800 text-[11px]">
+                {Object.entries(regression.coefficients).map(([feat, weight]) => (
+                  <div key={feat} className="bg-slate-800/80 p-2 rounded-lg">
+                    <span className="text-slate-400 block truncate" title={feat}>{feat}</span>
+                    <span className="text-amber-400 font-bold text-xs mt-0.5 block">
+                      {weight > 0 ? `+${weight}` : weight}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Hybrid Decision Engine Recommendation */}
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Hybrid Decision Engine Guidance
+                </span>
+                <span
+                  className={`text-xs font-bold px-3 py-1 rounded-full border capitalize inline-flex items-center gap-1.5 ${
+                    regression.hybridRecommendation.suggestedDifficulty === "pro"
+                      ? "bg-rose-50 text-rose-700 border-rose-200"
+                      : regression.hybridRecommendation.suggestedDifficulty === "moderate"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  }`}
+                >
+                  <span>
+                    {regression.hybridRecommendation.suggestedDifficulty === "pro"
+                      ? "🔴"
+                      : regression.hybridRecommendation.suggestedDifficulty === "moderate"
+                      ? "🟡"
+                      : "🟢"}
+                  </span>
+                  <span>{regression.hybridRecommendation.suggestedDifficulty} Practice</span>
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                {regression.hybridRecommendation.explanation}
+              </p>
+
+              <p className="text-[11px] text-slate-400 italic pt-1 border-t border-slate-200">
+                * Non-diagnostic assistive projection. Statistical regression forecasts cognitive pacing while deterministic rule boundaries protect user dignity and comfort.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 

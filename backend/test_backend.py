@@ -281,6 +281,48 @@ def test_api_tts_disk_cache_hit(tmp_path):
             os.environ.pop("TTS_CACHE_DIR", None)
 
 
+def test_api_regression_analytics():
+    client = TestClient(app)
+    # Seed a couple sessions for p1
+    client.post(
+        "/api/v1/games/results",
+        json={
+            "id": f"reg-test-1-{os.urandom(3).hex()}",
+            "patientId": "p1",
+            "gameId": "memory_match",
+            "domain": "Memory & Attention",
+            "score": 80,
+            "timeTaken": 60,
+            "difficulty": "beginner",
+            "accuracy": 85,
+        },
+    )
+    client.post(
+        "/api/v1/games/results",
+        json={
+            "id": f"reg-test-2-{os.urandom(3).hex()}",
+            "patientId": "p1",
+            "gameId": "memory_match",
+            "domain": "Memory & Attention",
+            "score": 88,
+            "timeTaken": 50,
+            "difficulty": "moderate",
+            "accuracy": 92,
+        },
+    )
+
+    res = client.get("/api/v1/analytics/regression?patientId=p1")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["patientId"] == "p1"
+    assert "regression" in data
+    assert "predictedNextScore" in data["regression"]
+    assert 40 <= data["regression"]["predictedNextScore"] <= 100
+    assert "hybridRecommendation" in data
+    assert "suggestedDifficulty" in data["hybridRecommendation"]
+
+
+
 if __name__ == "__main__":
     import tempfile
     from pathlib import Path
@@ -294,6 +336,7 @@ if __name__ == "__main__":
     test_api_error_validation()
     test_api_tts_validation()
     test_api_tts_service_unconfigured()
+    test_api_regression_analytics()
     with tempfile.TemporaryDirectory() as td:
         test_api_tts_disk_cache_hit(Path(td))
     print("All backend tests passed successfully!")

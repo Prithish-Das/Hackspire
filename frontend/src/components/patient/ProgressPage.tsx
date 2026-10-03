@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { TrendingUp, Award, Calendar, Info, BarChart3, Filter, CheckCircle2 } from "lucide-react";
+import { TrendingUp, Award, Calendar, Info, BarChart3, Filter, CheckCircle2, LineChart, Sparkles } from "lucide-react";
 import { Patient, DifficultyLevel, Language } from "../../types";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { getDomainStats, getGameSessions } from "../../utils/storage";
 import { SpeakButton } from "../common/SpeakButton";
 import { normalizeDifficulty, DIFFICULTY_TIERS, NormalizedDifficulty } from "../../data/difficultyConfig";
+import { computeCognitiveRegression } from "../../utils/regression";
 
 interface ProgressPageProps {
   patient: Patient;
@@ -110,6 +111,115 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({ patient }) => {
             This dashboard displays only your personal longitudinal activity history. There is
             strictly no comparison, leaderboard, or ranking against other individuals.
           </p>
+        </div>
+      </div>
+
+      {/* Predictive Cognitive Trajectory Card (Linear Regression Model) */}
+      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                <LineChart className="w-3.5 h-3.5" />
+                <span>Ordinary Least Squares (OLS) Predictive Model</span>
+              </span>
+              <span className="text-xs text-slate-500 font-medium">
+                Sample: {regression.sampleSize} recorded sessions
+              </span>
+            </div>
+            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <span>Predictive Cognitive Trajectory</span>
+              <SpeakButton
+                text={`Predictive Cognitive Trajectory. Expected next session score is ${regression.predictedNextScore} percent. ${regression.hybridRecommendation.explanation}`}
+                id="regression-speak"
+                size="sm"
+              />
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              Trained linear regression model predicts your expected score (Y) from previous performance, rolling average, accuracy, and difficulty (X₁...X₅).
+            </p>
+          </div>
+
+          <div className="text-right">
+            <span className="text-xs text-slate-500 block">Model Confidence (R²)</span>
+            <span className="text-sm font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 inline-block mt-0.5">
+              R² = {regression.rSquared} (RMSE: ±{regression.rmse})
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Left: Predicted Score & Gauge */}
+          <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/40 flex flex-col justify-between space-y-3">
+            <div>
+              <span className="text-xs uppercase tracking-wider font-bold text-blue-800 block mb-1">
+                Forecast for Next Session (ŷ)
+              </span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl sm:text-4xl font-extrabold text-blue-900">
+                  {regression.predictedNextScore}%
+                </span>
+                <span className="text-xs font-semibold text-slate-600">
+                  vs {baseline}% baseline ({regression.predictedNextScore - baseline >= 0 ? `+${regression.predictedNextScore - baseline}%` : `${regression.predictedNextScore - baseline}%`})
+                </span>
+              </div>
+
+              {/* Progress gauge */}
+              <div className="w-full bg-blue-200/60 h-2.5 rounded-full overflow-hidden mt-3">
+                <div
+                  className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                  style={{ width: `${regression.predictedNextScore}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-blue-200/60 text-[11px] text-slate-600 font-mono">
+              <span className="text-slate-500 block font-sans text-xs mb-0.5 font-medium">Estimated Regression Equation:</span>
+              <span className="truncate block" title={regression.formula}>{regression.formula}</span>
+            </div>
+          </div>
+
+          {/* Right: Hybrid Rule Engine Adaptation */}
+          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex flex-col justify-between space-y-3">
+            <div>
+              <span className="text-xs uppercase tracking-wider font-bold text-slate-600 block mb-1">
+                Hybrid Rule Engine Adjustment
+              </span>
+
+              <div className="flex items-center gap-2 mt-2">
+                <span
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border capitalize ${
+                    regression.hybridRecommendation.suggestedDifficulty === "pro"
+                      ? "bg-rose-50 text-rose-700 border-rose-200"
+                      : regression.hybridRecommendation.suggestedDifficulty === "moderate"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  }`}
+                >
+                  <span>
+                    {regression.hybridRecommendation.suggestedDifficulty === "pro"
+                      ? "🔴"
+                      : regression.hybridRecommendation.suggestedDifficulty === "moderate"
+                      ? "🟡"
+                      : "🟢"}
+                  </span>
+                  <span>{regression.hybridRecommendation.suggestedDifficulty} Practice</span>
+                </span>
+
+                <span className="text-xs font-bold text-slate-700 capitalize">
+                  ({regression.hybridRecommendation.action})
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed mt-2.5">
+                {regression.hybridRecommendation.explanation}
+              </p>
+            </div>
+
+            <p className="text-[11px] text-slate-500 italic pt-2 border-t border-slate-200">
+              * The linear regression model projects performance while compassionate deterministic rules guide pacing to avoid pressure or shame.
+            </p>
+          </div>
         </div>
       </div>
 

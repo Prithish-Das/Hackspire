@@ -25,6 +25,7 @@ try:
     )
     from .database import get_session, init_db
     from .models import DomainStat, GameSessionRecord, Patient
+    from .regression import train_cognitive_regression, get_hybrid_difficulty_recommendation
     from .schemas import (
         DomainScoreInfo,
         GameResultResponse,
@@ -47,6 +48,7 @@ except (ImportError, ValueError):
     )
     from database import get_session, init_db
     from models import DomainStat, GameSessionRecord, Patient
+    from regression import train_cognitive_regression, get_hybrid_difficulty_recommendation
     from schemas import (
         DomainScoreInfo,
         GameResultResponse,
@@ -415,6 +417,54 @@ def get_patient_recommendations(
         recommendedGame=weakest.recommendedGameId,
         currentDifficulty=current_diff,
     )
+
+
+@app.get(
+    "/api/v1/analytics/regression",
+    tags=["Analytics"],
+    summary="Linear Regression Analysis & Cognitive Score Prediction",
+)
+def get_regression_analysis(
+    patientId: str = Query(..., description="ID of patient e.g. p1"),
+    db: Session = Depends(get_session),
+):
+    """
+    Computes Ordinary Least Squares (OLS) Linear Regression from historical sessions:
+    Predicts: Y = Next Daily Cognitive Score (0-100)
+    Inputs: [X1: Previous Score, X2: 7-Day Rolling Avg, X3: Accuracy %, X4: Time Score, X5: Difficulty]
+    Feeds predicted score into deterministic rule engine for hybrid adaptation.
+    """
+    patient = db.get(Patient, patientId)
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Patient with ID '{patientId}' not found.",
+        )
+
+    sessions = db.exec(
+        select(GameSessionRecord)
+        .where(GameSessionRecord.patient_id == patientId)
+        .order_by(GameSessionRecord.date)
+    ).all()
+
+    stats = db.exec(
+        select(DomainStat).where(DomainStat.patient_id == patientId)
+    ).all()
+    avg_score = round(sum(s.running_avg for s in stats) / len(stats)) if stats else 78
+
+    reg_result = train_cognitive_regression(sessions, avg_score)
+    latest_diff = sessions[-1].difficulty if sessions else "beginner"
+    hybrid_rec = get_hybrid_difficulty_recommendation(
+        reg_result["predictedNextScore"], latest_diff
+    )
+
+    return {
+        "patientId": patientId,
+        "regression": reg_result,
+        "hybridRecommendation": hybrid_rec,
+        "currentBaseline": patient.baseline_score,
+        "currentAverage": avg_score,
+    }
 
 
 @app.post("/api/tts", tags=["TTS"])
