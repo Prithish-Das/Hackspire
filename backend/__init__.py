@@ -1,1 +1,0 @@
-"""RECALLED backend package."""
