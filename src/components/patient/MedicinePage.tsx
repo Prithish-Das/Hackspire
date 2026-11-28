@@ -1,48 +1,70 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Pill,
   Droplet,
   Utensils,
   Check,
   RotateCcw,
-  Clock,
   FileText,
-  Calendar
+  BellRing
 } from "lucide-react";
-import { Patient, Reminder, WaterQuantity } from "../../types";
+import { Patient, Reminder, User, WaterQuantity } from "../../types";
 import { useLanguage } from "../../contexts/LanguageContext";
 import {
+  getCurrentUser,
   getReminders,
-  updateReminderStatus,
   saveWaterEvent,
   getWaterEvents,
-  getPrescriptions
+  getPrescriptions,
+  getReminderCategory,
+  isReminderCompleted
 } from "../../utils/storage";
+import { completeReminderApi, fetchPatientReminders } from "../../services/connectionApi";
 import { SpeakButton } from "../common/SpeakButton";
 import { WaterConfirmDialog } from "./WaterConfirmDialog";
 
 interface MedicinePageProps {
+  user?: User;
   patient: Patient;
 }
 
-export const MedicinePage: React.FC<MedicinePageProps> = ({ patient }) => {
+export const MedicinePage: React.FC<MedicinePageProps> = ({ user, patient }) => {
   const { t } = useLanguage();
+  const activeUser = user || getCurrentUser();
 
-  const [reminders, setReminders] = useState<Reminder[]>(() => getReminders(patient.id));
+  const [reminders, setReminders] = useState<Reminder[]>(() =>
+    getReminders(patient.id).filter((r) => r.isActive !== false)
+  );
   const [waterEvents, setWaterEvents] = useState(() => getWaterEvents(patient.id));
   const [isWaterModalOpen, setIsWaterModalOpen] = useState(false);
+  const [careFilter, setCareFilter] = useState<"upcoming" | "completed">("upcoming");
+
+  useEffect(() => {
+    let mounted = true;
+    setReminders(getReminders(patient.id).filter((r) => r.isActive !== false));
+    void fetchPatientReminders(activeUser, patient.id).then((list) => {
+      if (mounted) {
+        setReminders(list.filter((r) => r.isActive !== false));
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [patient.id, activeUser?.id]);
 
   const prescriptions = getPrescriptions(patient.id);
   const activePrescription = prescriptions[0];
 
-  const handleMarkTaken = (id: string) => {
-    updateReminderStatus(id, "taken");
-    setReminders(getReminders(patient.id));
+  const handleMarkTaken = async (id: string) => {
+    const target = reminders.find((r) => r.id === id);
+    const status = target?.type === "medicine" ? "taken" : "completed";
+    await completeReminderApi(activeUser, id, status);
+    setReminders(getReminders(patient.id).filter((r) => r.isActive !== false));
   };
 
-  const handleUndo = (id: string) => {
-    updateReminderStatus(id, "upcoming");
-    setReminders(getReminders(patient.id));
+  const handleUndo = async (id: string) => {
+    await completeReminderApi(activeUser, id, "upcoming");
+    setReminders(getReminders(patient.id).filter((r) => r.isActive !== false));
   };
 
   const handleWaterConfirm = (qty: WaterQuantity) => {
@@ -60,13 +82,19 @@ export const MedicinePage: React.FC<MedicinePageProps> = ({ patient }) => {
     setIsWaterModalOpen(false);
   };
 
-  // Filter medicines vs meals vs water
+  // Filter medicines vs meals vs other caregiver reminders
   const medicineList = reminders.filter((r) => r.type === "medicine");
   const mealList = reminders.filter((r) => r.type === "meal");
+  const upcomingCareReminders = reminders
+    .filter((r) => !isReminderCompleted(r))
+    .sort((a, b) => (a.scheduledTime || a.time).localeCompare(b.scheduledTime || b.time));
+  const completedCareReminders = reminders
+    .filter((r) => isReminderCompleted(r))
+    .sort((a, b) => (a.scheduledTime || a.time).localeCompare(b.scheduledTime || b.time));
 
   // Calculate adherence rate
   const totalMeds = medicineList.length;
-  const takenMeds = medicineList.filter((r) => r.status === "taken").length;
+  const takenMeds = medicineList.filter((r) => isReminderCompleted(r)).length;
   const adherenceRate = totalMeds > 0 ? Math.round((takenMeds / totalMeds) * 100) : 100;
 
   const pageTitle = t("medicine.title");
@@ -100,6 +128,117 @@ export const MedicinePage: React.FC<MedicinePageProps> = ({ patient }) => {
         </div>
       </div>
 
+      {/* All Care Reminders (Read-only schedule from Caregiver across all 6 categories) */}
+      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <BellRing className="w-5 h-5 text-emerald-600" />
+              <span>{t("reminders.allPatientReminders")}</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">{t("reminders.readOnlyHint")}</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCareFilter("upcoming")}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${
+                careFilter === "upcoming"
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              {t("reminders.filter.upcoming")} ({upcomingCareReminders.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setCareFilter("completed")}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${
+                careFilter === "completed"
+                  ? "bg-emerald-600 text-white"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              {t("reminders.filter.completed")} ({completedCareReminders.length})
+            </button>
+          </div>
+        </div>
+
+        {(careFilter === "upcoming" ? upcomingCareReminders : completedCareReminders).length === 0 ? (
+          <p className="text-sm text-slate-500">{t("reminders.noRemindersMatch")}</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {(careFilter === "upcoming" ? upcomingCareReminders : completedCareReminders).map((rem) => {
+              const cat = getReminderCategory(rem);
+              const done = isReminderCompleted(rem);
+              const desc = rem.description || rem.instructions || rem.notes;
+              return (
+                <div
+                  key={`care-${rem.id}`}
+                  className={`p-4 rounded-2xl border-2 flex flex-col justify-between gap-3 ${
+                    done ? "bg-emerald-50/60 border-emerald-200" : "bg-slate-50/70 border-slate-200"
+                  }`}
+                >
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="px-2.5 py-0.5 rounded-md bg-white border border-slate-200 text-[11px] font-bold text-slate-700">
+                        {t(`reminder.category.${cat}`)}
+                      </span>
+                      <span className="text-xs font-bold text-slate-700">
+                        {rem.scheduledDate || ""} • {rem.scheduledTime || rem.time}
+                      </span>
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      {rem.title}
+                      {rem.dosage && (
+                        <span className="ml-1.5 text-xs font-semibold text-slate-600">
+                          ({rem.dosage})
+                        </span>
+                      )}
+                    </h3>
+                    {desc && <p className="text-xs text-slate-600">{desc}</p>}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-200/70">
+                    <SpeakButton
+                      text={`${t(`reminder.category.${cat}`)}. ${rem.title}. ${desc || ""}`}
+                      id={`care-rem-${rem.id}`}
+                      size="sm"
+                    />
+                    {done ? (
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold">
+                          <Check className="w-3.5 h-3.5" />
+                          {t("common.completed")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleUndo(rem.id)}
+                          className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 cursor-pointer"
+                          title={t("medicine.undo")}
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleMarkTaken(rem.id)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>{t("reminders.markDone")}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Grid: Medicines & Water/Meals */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Columns: Scheduled Medicines List */}
@@ -114,11 +253,11 @@ export const MedicinePage: React.FC<MedicinePageProps> = ({ patient }) => {
 
           <div className="space-y-3">
             {medicineList.map((med) => {
-              const isTaken = med.status === "taken";
+              const isTaken = isReminderCompleted(med);
               const isMissed = med.status === "missed";
               const isSnoozed = med.status === "snoozed";
 
-              const medSpeech = `${med.title}, dosage ${med.dosage || ""}, scheduled for ${med.time}. Status is ${isTaken ? "taken" : isMissed ? "missed" : "upcoming"}. ${med.instructions || ""}`;
+              const medSpeech = `${med.title}, dosage ${med.dosage || ""}, scheduled for ${med.time}. Status is ${isTaken ? "taken" : isMissed ? "missed" : "upcoming"}. ${med.instructions || med.description || ""}`;
 
               return (
                 <div
@@ -136,7 +275,7 @@ export const MedicinePage: React.FC<MedicinePageProps> = ({ patient }) => {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
-                        {med.time}
+                        {med.scheduledTime || med.time}
                       </span>
                       <h3 className="text-base font-bold text-slate-900">{med.title}</h3>
                       {med.dosage && (
@@ -146,8 +285,10 @@ export const MedicinePage: React.FC<MedicinePageProps> = ({ patient }) => {
                       )}
                       <SpeakButton text={medSpeech} id={`med-item-${med.id}`} size="sm" />
                     </div>
-                    {med.instructions && (
-                      <p className="text-xs sm:text-sm text-slate-600 pl-0.5">{med.instructions}</p>
+                    {(med.instructions || med.description) && (
+                      <p className="text-xs sm:text-sm text-slate-600 pl-0.5">
+                        {med.instructions || med.description}
+                      </p>
                     )}
                     {med.frequency && (
                       <p className="text-[11px] text-slate-500 pl-0.5 font-medium">

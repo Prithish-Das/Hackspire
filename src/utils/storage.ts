@@ -18,7 +18,13 @@ import {
   PatientOnboardingDraft,
   RegisteredAccount,
   Role,
-  PatientDislikes
+  PatientDislikes,
+  ConnectionRequest,
+  PatientCaregiverRelationship,
+  ReminderCategory,
+  ReminderType,
+  ConnectedCaregiverSummary,
+  ConnectedPatientSummary
 } from "../types";
 
 import {
@@ -33,11 +39,13 @@ import {
   initialAlerts,
   initialMemoriesTimeline,
   initialGameSessions,
-  initialDomainStats
+  initialDomainStats,
+  initialRelationships,
+  initialConnectionRequests
 } from "../data/initialData";
 
 const STORAGE_VERSION_KEY = "recalled_storage_version";
-const CURRENT_VERSION = "2.1";
+const CURRENT_VERSION = "2.2";
 
 const KEYS = {
   PATIENTS: "recalled_patients",
@@ -56,7 +64,9 @@ const KEYS = {
   SELECTED_PATIENT: "recalled_selected_patient_id",
   ACCESSIBILITY: "recalled_accessibility",
   REGISTERED_ACCOUNTS: "recalled_registered_accounts",
-  ONBOARDING_DRAFT: "recalled_onboarding_draft"
+  ONBOARDING_DRAFT: "recalled_onboarding_draft",
+  CONNECTION_REQUESTS: "recalled_connection_requests",
+  RELATIONSHIPS: "recalled_relationships"
 };
 
 // Safe JSON Parse helper (avoid logging sensitive payloads)
@@ -100,6 +110,8 @@ export function normalizePatientRecord(raw: Patient): Patient {
 
   return {
     ...raw,
+    userId: raw.userId || (raw.id.startsWith("p") ? `u-patient-${raw.id.replace(/^p-?/, "")}` : `u-${raw.id}`),
+    inviteCode: raw.inviteCode || `PAT-${raw.id.toUpperCase()}`,
     city: derivedCity,
     state: derivedState,
     region:
@@ -108,7 +120,12 @@ export function normalizePatientRecord(raw: Patient): Patient {
       "India",
     interests: Array.isArray(raw.interests) ? raw.interests : [],
     doctorIds: Array.isArray(raw.doctorIds) ? raw.doctorIds : ["d1"],
-    caretakerId: raw.caretakerId || "c1",
+    caretakerId: raw.caretakerId !== undefined ? raw.caretakerId : "",
+    caretakerIds: Array.isArray(raw.caretakerIds)
+      ? raw.caretakerIds
+      : raw.caretakerId
+      ? [raw.caretakerId]
+      : [],
     onboardingCompleted:
       raw.onboardingCompleted !== undefined ? raw.onboardingCompleted : true,
     basicInfo: raw.basicInfo || {
@@ -167,25 +184,107 @@ export function normalizePatientRecord(raw: Patient): Patient {
   };
 }
 
+function mergeMissingById<T extends { id: string }>(existing: T[], seeds: T[]): T[] {
+  const existingIds = new Set(existing.map((item) => item.id));
+  const missing = seeds.filter((item) => !existingIds.has(item.id));
+  return [...existing, ...missing];
+}
+
+export function getReminderCategory(reminder: Partial<Reminder>): ReminderCategory {
+  if (reminder.category) return reminder.category;
+  if (reminder.type === "medicine") return "Medicine";
+  if (reminder.type === "water") return "Water Intake";
+  if (reminder.type === "meal") return "Daily Activity";
+  return "Custom Reminder";
+}
+
+export function categoryToReminderType(category: ReminderCategory): ReminderType {
+  if (category === "Medicine") return "medicine";
+  if (category === "Water Intake") return "water";
+  if (category === "Daily Activity") return "meal";
+  return "general";
+}
+
+export function normalizeReminderRecord(raw: Reminder): Reminder {
+  const today = new Date().toISOString().split("T")[0];
+  const scheduledTime = raw.scheduledTime || raw.time || "09:00";
+  const category = getReminderCategory(raw);
+  const type = raw.type || categoryToReminderType(category);
+  const description = raw.description ?? raw.notes ?? raw.instructions ?? "";
+
+  return {
+    ...raw,
+    type,
+    category,
+    time: scheduledTime,
+    scheduledTime,
+    scheduledDate: raw.scheduledDate || today,
+    description,
+    notes: raw.notes ?? description,
+    repeatFrequency: raw.repeatFrequency || "daily",
+    isActive: raw.isActive !== undefined ? raw.isActive : true,
+    completedAt: raw.completedAt !== undefined ? raw.completedAt : null,
+    createdAt: raw.createdAt || "2026-10-01T08:00:00.000Z",
+    updatedAt: raw.updatedAt || raw.createdAt || "2026-10-01T08:00:00.000Z"
+  };
+}
+
+export function isReminderCompleted(reminder: Reminder): boolean {
+  return reminder.status === "completed" || reminder.status === "taken";
+}
+
+export function isReminderOverdue(reminder: Reminder): boolean {
+  if (reminder.isActive === false) return false;
+  if (isReminderCompleted(reminder)) return false;
+  if (reminder.status === "missed") return true;
+
+  const now = new Date();
+  const today = now.toISOString().split("T")[0];
+  const remDate = reminder.scheduledDate || today;
+  const remTime = reminder.scheduledTime || reminder.time || "23:59";
+
+  if (remDate < today) return true;
+  if (remDate > today) return false;
+
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  return remTime < `${hh}:${mm}`;
+}
+
 // Migration & Bootstrap initialization
 export function initializeStorage(): void {
   const version = localStorage.getItem(STORAGE_VERSION_KEY);
 
   if (!version || version !== CURRENT_VERSION) {
     if (!localStorage.getItem(KEYS.PATIENTS)) {
-      safeSet(KEYS.PATIENTS, initialPatients);
+      safeSet(KEYS.PATIENTS, initialPatients.map(normalizePatientRecord));
     } else {
-      const existing = safeGet<Patient[]>(KEYS.PATIENTS, initialPatients);
-      safeSet(KEYS.PATIENTS, existing.map(normalizePatientRecord));
+      const existing = safeGet<Patient[]>(KEYS.PATIENTS, initialPatients).map(normalizePatientRecord);
+      safeSet(KEYS.PATIENTS, mergeMissingById(existing, initialPatients.map(normalizePatientRecord)));
     }
     if (!localStorage.getItem(KEYS.CARETAKERS)) {
       safeSet(KEYS.CARETAKERS, initialCaretakers);
+    } else {
+      const existing = safeGet<Caretaker[]>(KEYS.CARETAKERS, initialCaretakers);
+      const merged = mergeMissingById(existing, initialCaretakers).map((c) => {
+        const seed = initialCaretakers.find((s) => s.id === c.id);
+        return {
+          ...c,
+          userId: c.userId || seed?.userId || `u-${c.id}`,
+          inviteCode: c.inviteCode || seed?.inviteCode || `CARE-${c.id.toUpperCase()}`,
+          relationshipLabel: c.relationshipLabel || seed?.relationshipLabel
+        };
+      });
+      safeSet(KEYS.CARETAKERS, merged);
     }
     if (!localStorage.getItem(KEYS.DOCTORS)) {
       safeSet(KEYS.DOCTORS, initialDoctors);
     }
     if (!localStorage.getItem(KEYS.REMINDERS)) {
-      safeSet(KEYS.REMINDERS, initialReminders);
+      safeSet(KEYS.REMINDERS, initialReminders.map(normalizeReminderRecord));
+    } else {
+      const existing = safeGet<Reminder[]>(KEYS.REMINDERS, initialReminders).map(normalizeReminderRecord);
+      safeSet(KEYS.REMINDERS, mergeMissingById(existing, initialReminders.map(normalizeReminderRecord)));
     }
     if (!localStorage.getItem(KEYS.WATER_EVENTS)) {
       safeSet(KEYS.WATER_EVENTS, initialWaterEvents);
@@ -198,18 +297,41 @@ export function initializeStorage(): void {
     }
     if (!localStorage.getItem(KEYS.NOTES)) {
       safeSet(KEYS.NOTES, initialCaregiverNotes);
+    } else {
+      const existing = safeGet<CaregiverNote[]>(KEYS.NOTES, initialCaregiverNotes);
+      safeSet(KEYS.NOTES, mergeMissingById(existing, initialCaregiverNotes));
     }
     if (!localStorage.getItem(KEYS.ALERTS)) {
       safeSet(KEYS.ALERTS, initialAlerts);
+    } else {
+      const existing = safeGet<AlertItem[]>(KEYS.ALERTS, initialAlerts);
+      safeSet(KEYS.ALERTS, mergeMissingById(existing, initialAlerts));
     }
     if (!localStorage.getItem(KEYS.MEMORIES_TIMELINE)) {
       safeSet(KEYS.MEMORIES_TIMELINE, initialMemoriesTimeline);
     }
     if (!localStorage.getItem(KEYS.GAME_SESSIONS)) {
       safeSet(KEYS.GAME_SESSIONS, initialGameSessions);
+    } else {
+      const existing = safeGet<GameSession[]>(KEYS.GAME_SESSIONS, initialGameSessions);
+      safeSet(KEYS.GAME_SESSIONS, mergeMissingById(existing, initialGameSessions));
     }
     if (!localStorage.getItem(KEYS.DOMAIN_STATS)) {
       safeSet(KEYS.DOMAIN_STATS, initialDomainStats);
+    } else {
+      const existing = safeGet<DomainStats[]>(KEYS.DOMAIN_STATS, initialDomainStats);
+      const missing = initialDomainStats.filter(
+        (s) => !existing.some((e) => e.patientId === s.patientId && e.domain === s.domain)
+      );
+      if (missing.length > 0) {
+        safeSet(KEYS.DOMAIN_STATS, [...existing, ...missing]);
+      }
+    }
+    if (!localStorage.getItem(KEYS.RELATIONSHIPS)) {
+      safeSet(KEYS.RELATIONSHIPS, initialRelationships);
+    }
+    if (!localStorage.getItem(KEYS.CONNECTION_REQUESTS)) {
+      safeSet(KEYS.CONNECTION_REQUESTS, initialConnectionRequests);
     }
 
     localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_VERSION);
@@ -253,6 +375,7 @@ export function registerAccount(params: {
   email: string;
   password: string;
   role: Role;
+  inviteCode?: string;
   patientId?: string;
   caretakerId?: string;
   doctorId?: string;
@@ -267,12 +390,22 @@ export function registerAccount(params: {
     return { ok: false, error: "An account with this email and role already exists." };
   }
 
+  const id = `u-${params.role}-${Date.now()}`;
+  const generatedInviteCode =
+    params.inviteCode ||
+    (params.role === "patient"
+      ? `PAT-${(params.patientId || id).replace(/^p-?/, "").toUpperCase().slice(0, 8)}`
+      : params.role === "caretaker"
+      ? `CARE-${(params.caretakerId || id).replace(/^c-?/, "").toUpperCase().slice(0, 8)}`
+      : undefined);
+
   const account: RegisteredAccount = {
-    id: `u-${Date.now()}`,
+    id,
     name: params.name.trim(),
     email: normEmail,
     passwordHash: hashPrototypeCredential(params.password),
     role: params.role,
+    inviteCode: generatedInviteCode,
     patientId: params.patientId,
     caretakerId: params.caretakerId,
     doctorId: params.doctorId,
@@ -310,6 +443,8 @@ export function authenticateAccount(
     name: match.name,
     email: match.email,
     role: match.role,
+    inviteCode: match.inviteCode,
+    profileImage: match.profileImage,
     patientId: match.patientId,
     caretakerId: match.caretakerId,
     doctorId: match.doctorId
@@ -340,10 +475,11 @@ export function getCurrentUser(): User | null {
   const user = safeGet<User | null>(KEYS.CURRENT_USER, null);
   if (!user) {
     const defaultUser: User = {
-      id: "u-patient",
+      id: "u-patient-1",
       name: "Anand Sharma",
       email: "anand.sharma@example.com",
       role: "patient",
+      inviteCode: "PAT-ANAND-P1",
       patientId: "p1"
     };
     safeSet(KEYS.CURRENT_USER, defaultUser);
@@ -368,16 +504,27 @@ export function setSelectedPatientId(id: string): void {
 
 // Caretakers & Doctors API
 export function getCaretakers(): Caretaker[] {
-  return safeGet<Caretaker[]>(KEYS.CARETAKERS, initialCaretakers);
+  return safeGet<Caretaker[]>(KEYS.CARETAKERS, initialCaretakers).map((c) => ({
+    ...c,
+    userId: c.userId || `u-${c.id}`,
+    inviteCode: c.inviteCode || `CARE-${c.id.toUpperCase()}`,
+    patientIds: Array.isArray(c.patientIds) ? c.patientIds : []
+  }));
 }
 
 export function saveCaretaker(caretaker: Caretaker): void {
   const all = getCaretakers();
-  const idx = all.findIndex((c) => c.id === caretaker.id);
+  const normalized: Caretaker = {
+    ...caretaker,
+    userId: caretaker.userId || `u-${caretaker.id}`,
+    inviteCode: caretaker.inviteCode || `CARE-${caretaker.id.toUpperCase()}`,
+    patientIds: Array.isArray(caretaker.patientIds) ? caretaker.patientIds : []
+  };
+  const idx = all.findIndex((c) => c.id === normalized.id);
   if (idx >= 0) {
-    all[idx] = caretaker;
+    all[idx] = normalized;
   } else {
-    all.push(caretaker);
+    all.push(normalized);
   }
   safeSet(KEYS.CARETAKERS, all);
 }
@@ -434,12 +581,9 @@ export function createPatientFromOnboarding(patient: Patient): Patient {
   // Seed initial domain stats so dashboard, games hub, and progress work immediately
   getDomainStats(normalized.id);
 
-  // Also ensure the assigned caretaker and doctor include this patient in their roster
-  const caretakers = getCaretakers();
-  const caretaker = caretakers.find((c) => c.id === normalized.caretakerId);
-  if (caretaker && !caretaker.patientIds.includes(normalized.id)) {
-    caretaker.patientIds.push(normalized.id);
-    saveCaretaker(caretaker);
+  // If the patient has an explicit caretakerId, ensure the relationship & roster include them
+  if (normalized.caretakerId) {
+    syncRelationshipToEntities(normalized.id, normalized.caretakerId, "connect");
   }
 
   const doctors = getDoctors();
@@ -485,10 +629,176 @@ export function addPatientContentExclusion(
   return updated;
 }
 
+// Connection Requests & Patient-Caregiver Relationships API
+export function getConnectionRequests(): ConnectionRequest[] {
+  return safeGet<ConnectionRequest[]>(KEYS.CONNECTION_REQUESTS, initialConnectionRequests);
+}
+
+export function saveConnectionRequests(requests: ConnectionRequest[]): void {
+  safeSet(KEYS.CONNECTION_REQUESTS, requests);
+}
+
+export function getRelationships(): PatientCaregiverRelationship[] {
+  return safeGet<PatientCaregiverRelationship[]>(KEYS.RELATIONSHIPS, initialRelationships);
+}
+
+export function saveRelationships(relationships: PatientCaregiverRelationship[]): void {
+  safeSet(KEYS.RELATIONSHIPS, relationships);
+}
+
+export function syncRelationshipToEntities(
+  patientId: string,
+  caregiverId: string,
+  action: "connect" | "disconnect"
+): PatientCaregiverRelationship | null {
+  const relationships = getRelationships();
+  const patients = getPatients();
+  const caretakers = getCaretakers();
+
+  const patient = patients.find((p) => p.id === patientId);
+  const caretaker = caretakers.find((c) => c.id === caregiverId);
+
+  const now = new Date().toISOString();
+  let rel = relationships.find(
+    (r) => r.patientId === patientId && r.caregiverId === caregiverId
+  );
+
+  if (action === "connect") {
+    if (rel) {
+      rel = {
+        ...rel,
+        status: "ACTIVE",
+        connectedAt: now,
+        disconnectedAt: undefined
+      };
+      saveRelationships(relationships.map((r) => (r.id === rel!.id ? rel! : r)));
+    } else {
+      rel = {
+        id: `rel-${caregiverId}-${patientId}`,
+        patientId,
+        caregiverId,
+        patientUserId: patient?.userId,
+        caregiverUserId: caretaker?.userId,
+        connectedAt: now,
+        status: "ACTIVE"
+      };
+      saveRelationships([...relationships, rel]);
+    }
+
+    if (caretaker && !caretaker.patientIds.includes(patientId)) {
+      saveCaretaker({ ...caretaker, patientIds: [...caretaker.patientIds, patientId] });
+    }
+    if (patient) {
+      const nextCaretakerIds = Array.from(
+        new Set([...(patient.caretakerIds || []), caregiverId])
+      );
+      updatePatient({
+        ...patient,
+        caretakerId: patient.caretakerId || caregiverId,
+        caretakerIds: nextCaretakerIds
+      });
+    }
+    return rel;
+  } else {
+    if (rel) {
+      rel = {
+        ...rel,
+        status: "DISCONNECTED",
+        disconnectedAt: now
+      };
+      saveRelationships(relationships.map((r) => (r.id === rel!.id ? rel! : r)));
+    }
+    if (caretaker) {
+      saveCaretaker({
+        ...caretaker,
+        patientIds: caretaker.patientIds.filter((pid) => pid !== patientId)
+      });
+    }
+    if (patient) {
+      const nextCaretakerIds = (patient.caretakerIds || []).filter((cid) => cid !== caregiverId);
+      const nextPrimary =
+        patient.caretakerId === caregiverId ? nextCaretakerIds[0] || "" : patient.caretakerId;
+      updatePatient({
+        ...patient,
+        caretakerId: nextPrimary,
+        caretakerIds: nextCaretakerIds
+      });
+    }
+    return rel || null;
+  }
+}
+
+export function getConnectedCaregiversForPatient(patientId: string): ConnectedCaregiverSummary[] {
+  const relationships = getRelationships().filter(
+    (r) => r.patientId === patientId && r.status === "ACTIVE"
+  );
+  const caretakers = getCaretakers();
+  return relationships
+    .map((rel) => {
+      const caregiver = caretakers.find((c) => c.id === rel.caregiverId);
+      if (!caregiver) return null;
+      return {
+        caregiver,
+        relationshipId: rel.id,
+        connectedAt: rel.connectedAt
+      };
+    })
+    .filter((item): item is ConnectedCaregiverSummary => Boolean(item));
+}
+
+export function getConnectedPatientSummariesForCaregiver(
+  caregiverId: string
+): ConnectedPatientSummary[] {
+  const relationships = getRelationships().filter(
+    (r) => r.caregiverId === caregiverId && r.status === "ACTIVE"
+  );
+  const patients = getPatients();
+  const allReminders = getReminders();
+  const allSessions = getGameSessions();
+
+  return relationships
+    .map((rel): ConnectedPatientSummary | null => {
+      const patient = patients.find((p) => p.id === rel.patientId);
+      if (!patient) return null;
+
+      const pReminders = allReminders.filter(
+        (r) => r.patientId === patient.id && r.isActive !== false
+      );
+      const pendingRemindersCount = pReminders.filter((r) => !isReminderCompleted(r)).length;
+      const completedRemindersCount = pReminders.filter((r) => isReminderCompleted(r)).length;
+
+      const pSessions = allSessions
+        .filter((s) => s.patientId === patient.id)
+        .sort((a, b) => b.date.localeCompare(a.date));
+      const latestSession = pSessions[0];
+      const latestActivity = latestSession
+        ? `${latestSession.gameId.replace(/_/g, " ")} (${latestSession.score}%)`
+        : undefined;
+
+      const stats = getDomainStats(patient.id);
+      const averageScore =
+        stats.length > 0
+          ? Math.round(stats.reduce((sum, s) => sum + s.runningAvg, 0) / stats.length)
+          : patient.baselineScore ?? 75;
+
+      return {
+        patient,
+        relationshipId: rel.id,
+        connectedAt: rel.connectedAt,
+        caregiverId,
+        pendingRemindersCount,
+        completedRemindersCount,
+        latestActivity,
+        averageScore
+      };
+    })
+    .filter((item): item is ConnectedPatientSummary => item !== null);
+}
+
 /**
  * Role-based patient access control:
  * - Patient: ONLY their own patientId (never unrelated patients)
- * - Caretaker: ONLY patients assigned to their caretakerId / patientIds
+ * - Caretaker: ONLY patients with an ACTIVE relationship (or matching roster when no disconnected relationship overrides)
  * - Doctor: ONLY patients assigned to their doctorId / patientIds
  */
 export function getAccessiblePatientsForUser(user: User | null): Patient[] {
@@ -500,12 +810,29 @@ export function getAccessiblePatientsForUser(user: User | null): Patient[] {
   }
 
   if (user.role === "caretaker") {
-    const caretaker = getCaretakers().find((c) => c.id === user.caretakerId);
-    return all.filter(
-      (p) =>
-        p.caretakerId === user.caretakerId ||
-        (caretaker ? caretaker.patientIds.includes(p.id) : false)
+    if (!user.caretakerId) return [];
+    const relationships = getRelationships();
+    const activeRelPatientIds = new Set(
+      relationships
+        .filter((r) => r.caregiverId === user.caretakerId && r.status === "ACTIVE")
+        .map((r) => r.patientId)
     );
+    const disconnectedRelPatientIds = new Set(
+      relationships
+        .filter((r) => r.caregiverId === user.caretakerId && r.status === "DISCONNECTED")
+        .map((r) => r.patientId)
+    );
+    const caretaker = getCaretakers().find((c) => c.id === user.caretakerId);
+
+    return all.filter((p) => {
+      if (activeRelPatientIds.has(p.id)) return true;
+      if (disconnectedRelPatientIds.has(p.id)) return false;
+      return (
+        p.caretakerId === user.caretakerId ||
+        (Array.isArray(p.caretakerIds) && p.caretakerIds.includes(user.caretakerId!)) ||
+        (caretaker ? caretaker.patientIds.includes(p.id) : false)
+      );
+    });
   }
 
   if (user.role === "doctor") {
@@ -527,20 +854,33 @@ export function canUserAccessPatient(user: User | null, patientId: string): bool
 
 // Reminders API (Single Source of Truth)
 export function getReminders(patientId?: string): Reminder[] {
-  const all = safeGet<Reminder[]>(KEYS.REMINDERS, initialReminders);
+  const all = safeGet<Reminder[]>(KEYS.REMINDERS, initialReminders).map(normalizeReminderRecord);
   if (!patientId) return all;
   return all.filter((r) => r.patientId === patientId);
 }
 
-export function saveReminder(reminder: Reminder): void {
+export function replacePatientReminders(patientId: string, patientReminders: Reminder[]): void {
+  const others = getReminders().filter((r) => r.patientId !== patientId);
+  const normalized = patientReminders.map(normalizeReminderRecord);
+  safeSet(KEYS.REMINDERS, [...others, ...normalized]);
+}
+
+export function saveReminder(reminder: Reminder): Reminder {
   const all = getReminders();
-  const index = all.findIndex((r) => r.id === reminder.id);
+  const now = new Date().toISOString();
+  const normalized = normalizeReminderRecord({
+    ...reminder,
+    createdAt: reminder.createdAt || now,
+    updatedAt: now
+  });
+  const index = all.findIndex((r) => r.id === normalized.id);
   if (index >= 0) {
-    all[index] = reminder;
+    all[index] = normalized;
   } else {
-    all.push(reminder);
+    all.push(normalized);
   }
   safeSet(KEYS.REMINDERS, all);
+  return normalized;
 }
 
 export function updateReminderStatus(
@@ -552,7 +892,14 @@ export function updateReminderStatus(
   const target = all.find((r) => r.id === id);
   if (!target) return null;
 
+  const now = new Date().toISOString();
   target.status = status;
+  target.updatedAt = now;
+  if (status === "completed" || status === "taken") {
+    target.completedAt = now;
+  } else if (status === "upcoming") {
+    target.completedAt = null;
+  }
   if (options?.snoozedUntil) {
     target.snoozedUntil = options.snoozedUntil;
   }
@@ -560,9 +907,9 @@ export function updateReminderStatus(
     target.adherenceHistory = [];
   }
   target.adherenceHistory.push({
-    date: new Date().toISOString().split("T")[0],
+    date: now.split("T")[0],
     status,
-    timestamp: new Date().toISOString()
+    timestamp: now
   });
 
   safeSet(KEYS.REMINDERS, all);
@@ -822,6 +1169,8 @@ export function resetToInitialData(): void {
   safeSet(KEYS.MEMORIES_TIMELINE, initialMemoriesTimeline);
   safeSet(KEYS.GAME_SESSIONS, initialGameSessions);
   safeSet(KEYS.DOMAIN_STATS, initialDomainStats);
+  safeSet(KEYS.RELATIONSHIPS, initialRelationships);
+  safeSet(KEYS.CONNECTION_REQUESTS, initialConnectionRequests);
   safeSet(KEYS.REGISTERED_ACCOUNTS, []);
   clearOnboardingDraft();
   setSelectedPatientId("p1");

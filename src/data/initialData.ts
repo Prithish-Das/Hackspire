@@ -10,12 +10,18 @@ import {
   AlertItem,
   GameSession,
   DomainStats,
-  MemoryLaneMemory
+  MemoryLaneMemory,
+  ConnectionRequest,
+  PatientCaregiverRelationship
 } from "../types";
+
+const TODAY_ISO_DATE = new Date().toISOString().split("T")[0];
 
 export const initialPatients: Patient[] = [
   {
     id: "p1",
+    userId: "u-patient-1",
+    inviteCode: "PAT-ANAND-P1",
     name: "Anand Sharma",
     age: 74,
     birthYear: 1952,
@@ -25,6 +31,7 @@ export const initialPatients: Patient[] = [
     language: "en",
     interests: ["Indian Films & Actors", "Music", "Cricket", "Regional Culture", "Historical Events"],
     caretakerId: "c1",
+    caretakerIds: ["c1"],
     doctorIds: ["d1"],
     emergencyContact: {
       name: "Priya Sharma (Daughter)",
@@ -74,6 +81,8 @@ export const initialPatients: Patient[] = [
   },
   {
     id: "p2",
+    userId: "u-patient-2",
+    inviteCode: "PAT-SAVITRI-P2",
     name: "Savitri Devi",
     age: 71,
     birthYear: 1955,
@@ -83,6 +92,7 @@ export const initialPatients: Patient[] = [
     language: "bn",
     interests: ["Music", "Festivals", "Cooking & Culture"],
     caretakerId: "c1",
+    caretakerIds: ["c1"],
     doctorIds: ["d1"],
     emergencyContact: {
       name: "Rohan Verma (Son)",
@@ -120,6 +130,8 @@ export const initialPatients: Patient[] = [
   },
   {
     id: "p3",
+    userId: "u-patient-3",
+    inviteCode: "PAT-RAMESH-P3",
     name: "Dr. Ramesh Roy",
     age: 79,
     birthYear: 1947,
@@ -129,6 +141,7 @@ export const initialPatients: Patient[] = [
     language: "bn",
     interests: ["Literature", "History", "Rabindra Sangeet", "Cinema"],
     caretakerId: "c1",
+    caretakerIds: ["c1"],
     doctorIds: ["d1"],
     emergencyContact: {
       name: "Sunil Roy (Brother)",
@@ -163,16 +176,211 @@ export const initialPatients: Patient[] = [
       excludedPeopleOrSubjects: [],
       otherExclusions: []
     }
+  },
+  {
+    id: "p4",
+    userId: "u-patient-4",
+    inviteCode: "PAT-MEERA-P4",
+    name: "Meera Krishnan",
+    age: 76,
+    birthYear: 1950,
+    region: "Bengaluru, Karnataka",
+    city: "Bengaluru",
+    state: "Karnataka",
+    language: "en",
+    interests: ["Classical Music", "Gardening", "Cooking"],
+    caretakerId: "",
+    caretakerIds: [],
+    doctorIds: ["d1"],
+    emergencyContact: {
+      name: "Karthik Krishnan (Son)",
+      phone: "+91 99001 44556",
+      relation: "Son"
+    },
+    baselineScore: 76,
+    onboardingCompleted: true,
+    basicInfo: {
+      fullName: "Meera Krishnan",
+      age: 76,
+      city: "Bengaluru",
+      state: "Karnataka",
+      preferredLanguage: "en"
+    },
+    familyInfo: {
+      assistedByCaregiver: false,
+      allowInGames: true,
+      children: [{ id: "fam-c4", name: "Karthik Krishnan", relationDetail: "Son" }],
+      grandchildren: []
+    },
+    structuredInterests: {
+      sports: [],
+      entertainment: ["Music"],
+      lifestyle: ["Gardening", "Cooking"],
+      custom: ["Classical Music"]
+    },
+    dislikes: {
+      dislikedSportsOrTeams: [],
+      dislikedEntertainment: [],
+      uncomfortableTopics: [],
+      excludedPeopleOrSubjects: [],
+      otherExclusions: []
+    }
+  },
+  {
+    id: "p5",
+    userId: "u-patient-5",
+    inviteCode: "PAT-HARISH-P5",
+    name: "Harish Patel",
+    age: 69,
+    birthYear: 1957,
+    region: "Ahmedabad, Gujarat",
+    city: "Ahmedabad",
+    state: "Gujarat",
+    language: "hi",
+    interests: ["Morning Walks", "Bhajans", "Chess"],
+    caretakerId: "",
+    caretakerIds: [],
+    doctorIds: ["d1"],
+    emergencyContact: {
+      name: "Neha Patel (Daughter)",
+      phone: "+91 98250 77889",
+      relation: "Daughter"
+    },
+    baselineScore: 81,
+    onboardingCompleted: true,
+    basicInfo: {
+      fullName: "Harish Patel",
+      age: 69,
+      city: "Ahmedabad",
+      state: "Gujarat",
+      preferredLanguage: "hi"
+    },
+    familyInfo: {
+      assistedByCaregiver: false,
+      allowInGames: true,
+      children: [{ id: "fam-c5", name: "Neha Patel", relationDetail: "Daughter" }],
+      grandchildren: []
+    },
+    structuredInterests: {
+      sports: ["Chess"],
+      entertainment: ["Music"],
+      lifestyle: ["Morning Walks"],
+      custom: ["Bhajans"]
+    },
+    dislikes: {
+      dislikedSportsOrTeams: [],
+      dislikedEntertainment: [],
+      uncomfortableTopics: [],
+      excludedPeopleOrSubjects: [],
+      otherExclusions: []
+    }
   }
 ];
 
 export const initialCaretakers: Caretaker[] = [
   {
     id: "c1",
+    userId: "u-caretaker-1",
+    inviteCode: "CARE-PRIYA-C1",
     name: "Priya Sharma",
     email: "priya.sharma@care.org",
     phone: "+91 98765 43210",
+    relationshipLabel: "Daughter & Family Caregiver",
     patientIds: ["p1", "p2", "p3"]
+  },
+  {
+    id: "c2",
+    userId: "u-caretaker-2",
+    inviteCode: "CARE-RAHUL-C2",
+    name: "Rahul Verma",
+    email: "rahul.verma@care.org",
+    phone: "+91 98111 22334",
+    relationshipLabel: "Family Caregiver",
+    patientIds: []
+  }
+];
+
+export const initialRelationships: PatientCaregiverRelationship[] = [
+  {
+    id: "rel-c1-p1",
+    patientId: "p1",
+    caregiverId: "c1",
+    patientUserId: "u-patient-1",
+    caregiverUserId: "u-caretaker-1",
+    connectedAt: "2026-09-01T09:00:00.000Z",
+    status: "ACTIVE"
+  },
+  {
+    id: "rel-c1-p2",
+    patientId: "p2",
+    caregiverId: "c1",
+    patientUserId: "u-patient-2",
+    caregiverUserId: "u-caretaker-1",
+    connectedAt: "2026-09-05T10:30:00.000Z",
+    status: "ACTIVE"
+  },
+  {
+    id: "rel-c1-p3",
+    patientId: "p3",
+    caregiverId: "c1",
+    patientUserId: "u-patient-3",
+    caregiverUserId: "u-caretaker-1",
+    connectedAt: "2026-09-10T14:15:00.000Z",
+    status: "ACTIVE"
+  }
+];
+
+export const initialConnectionRequests: ConnectionRequest[] = [
+  {
+    id: "creq-1",
+    senderId: "u-patient-4",
+    receiverId: "u-caretaker-1",
+    senderRole: "patient",
+    receiverRole: "caretaker",
+    senderName: "Meera Krishnan",
+    receiverName: "Priya Sharma",
+    senderInviteCode: "PAT-MEERA-P4",
+    receiverInviteCode: "CARE-PRIYA-C1",
+    patientId: "p4",
+    caregiverId: "c1",
+    message: "Hello Priya, I would like to connect with you for my daily care reminders.",
+    status: "PENDING",
+    createdAt: "2026-11-27T08:30:00.000Z",
+    updatedAt: "2026-11-27T08:30:00.000Z"
+  },
+  {
+    id: "creq-2",
+    senderId: "u-caretaker-2",
+    receiverId: "u-patient-1",
+    senderRole: "caretaker",
+    receiverRole: "patient",
+    senderName: "Rahul Verma",
+    receiverName: "Anand Sharma",
+    senderInviteCode: "CARE-RAHUL-C2",
+    receiverInviteCode: "PAT-ANAND-P1",
+    patientId: "p1",
+    caregiverId: "c2",
+    message: "Namaste Anand ji, I am Rahul and would love to help coordinate your evening walks.",
+    status: "PENDING",
+    createdAt: "2026-11-27T11:00:00.000Z",
+    updatedAt: "2026-11-27T11:00:00.000Z"
+  },
+  {
+    id: "creq-3",
+    senderId: "u-caretaker-1",
+    receiverId: "u-patient-5",
+    senderRole: "caretaker",
+    receiverRole: "patient",
+    senderName: "Priya Sharma",
+    receiverName: "Harish Patel",
+    senderInviteCode: "CARE-PRIYA-C1",
+    receiverInviteCode: "PAT-HARISH-P5",
+    patientId: "p5",
+    caregiverId: "c1",
+    message: "Hello Harish ji, sending a care connection request to help manage your schedule.",
+    status: "PENDING",
+    createdAt: "2026-11-28T05:15:00.000Z",
+    updatedAt: "2026-11-28T05:15:00.000Z"
   }
 ];
 
@@ -280,6 +488,108 @@ export const initialReminders: Reminder[] = [
     instructions: "Take at bedtime",
     createdBy: "d1",
     notes: "Bedtime lipid management"
+  },
+  // Patient 2 (Savitri Devi) Reminders
+  {
+    id: "rem-p2-1",
+    patientId: "p2",
+    type: "medicine",
+    category: "Medicine",
+    title: "Thyroxine 50mcg",
+    description: "Take on an empty stomach 30 minutes before morning tea",
+    time: "07:00",
+    scheduledDate: TODAY_ISO_DATE,
+    scheduledTime: "07:00",
+    repeatFrequency: "daily",
+    isActive: true,
+    status: "taken",
+    dosage: "50 mcg",
+    frequency: "Once daily",
+    instructions: "Take with warm water before breakfast",
+    createdBy: "c1",
+    completedAt: "2026-11-28T07:05:00.000Z",
+    notes: "Morning thyroid support"
+  },
+  {
+    id: "rem-p2-2",
+    patientId: "p2",
+    type: "general",
+    category: "Exercise",
+    title: "Gentle Terrace Walk & Stretching",
+    description: "15 minutes of slow walking and shoulder stretches in morning sunlight",
+    time: "09:30",
+    scheduledDate: TODAY_ISO_DATE,
+    scheduledTime: "09:30",
+    repeatFrequency: "daily",
+    isActive: true,
+    status: "upcoming",
+    createdBy: "c1",
+    notes: "Wear comfortable walking shoes"
+  },
+  {
+    id: "rem-p2-3",
+    patientId: "p2",
+    type: "water",
+    category: "Water Intake",
+    title: "Midday Hydration Check",
+    description: "Drink one full glass of lukewarm water",
+    time: "12:30",
+    scheduledDate: TODAY_ISO_DATE,
+    scheduledTime: "12:30",
+    repeatFrequency: "daily",
+    isActive: true,
+    status: "upcoming",
+    createdBy: "c1"
+  },
+  // Patient 3 (Dr. Ramesh Roy) Reminders
+  {
+    id: "rem-p3-1",
+    patientId: "p3",
+    type: "medicine",
+    category: "Medicine",
+    title: "Metformin XR",
+    description: "Take right after lunch with water",
+    time: "13:30",
+    scheduledDate: TODAY_ISO_DATE,
+    scheduledTime: "13:30",
+    repeatFrequency: "daily",
+    isActive: true,
+    status: "upcoming",
+    dosage: "500 mg",
+    createdBy: "c1",
+    notes: "After lunch blood sugar support"
+  },
+  {
+    id: "rem-p3-2",
+    patientId: "p3",
+    type: "general",
+    category: "Doctor Appointment",
+    title: "Neurology Wellness Check-in",
+    description: "Routine follow-up call with Dr. Arvind Mukherjee at Metropolitan Clinic",
+    time: "17:00",
+    scheduledDate: TODAY_ISO_DATE,
+    scheduledTime: "17:00",
+    repeatFrequency: "none",
+    isActive: true,
+    status: "upcoming",
+    createdBy: "c1",
+    notes: "Keep recent memory log handy"
+  },
+  {
+    id: "rem-p3-3",
+    patientId: "p3",
+    type: "general",
+    category: "Daily Activity",
+    title: "Evening Rabindra Sangeet & Reading",
+    description: "Listen to favourite Tagore songs for 20 minutes",
+    time: "18:30",
+    scheduledDate: TODAY_ISO_DATE,
+    scheduledTime: "18:30",
+    repeatFrequency: "daily",
+    isActive: true,
+    status: "completed",
+    completedAt: "2026-11-28T18:45:00.000Z",
+    createdBy: "c1"
   }
 ];
 
@@ -413,6 +723,24 @@ export const initialCaregiverNotes: CaregiverNote[] = [
     text: "Took medicine on time. Enjoyed the Pattern Rhythm activity and scored well.",
     date: "2026-09-30",
     mood: "Attentive"
+  },
+  {
+    id: "cn-p2-1",
+    patientId: "p2",
+    authorId: "c1",
+    authorName: "Priya Sharma",
+    text: "Savitri ji enjoyed listening to morning devotional music and completed her breakfast smoothly.",
+    date: "2026-11-27",
+    mood: "Calm & Attentive"
+  },
+  {
+    id: "cn-p3-1",
+    patientId: "p3",
+    authorId: "c1",
+    authorName: "Priya Sharma",
+    text: "Dr. Roy was very engaged during his afternoon reading and Memory Lane quiz.",
+    date: "2026-11-27",
+    mood: "Cheerful & Engaged"
   }
 ];
 
@@ -434,6 +762,24 @@ export const initialAlerts: AlertItem[] = [
     message: "Patient reported having water for the morning interval.",
     timestamp: "2026-10-02T10:32:00.000Z",
     resolved: true
+  },
+  {
+    id: "alt-p2-1",
+    patientId: "p2",
+    type: "activity",
+    severity: "warning",
+    message: "Morning terrace walk reminder is awaiting confirmation.",
+    timestamp: "2026-11-28T09:45:00.000Z",
+    resolved: false
+  },
+  {
+    id: "alt-p3-1",
+    patientId: "p3",
+    type: "medicine",
+    severity: "info",
+    message: "Upcoming afternoon Metformin XR schedule set for 13:30.",
+    timestamp: "2026-11-28T08:00:00.000Z",
+    resolved: false
   }
 ];
 
@@ -525,6 +871,28 @@ export const initialGameSessions: GameSession[] = [
     difficulty: "beginner",
     result: "completed",
     date: "2026-09-27T11:15:00.000Z"
+  },
+  {
+    id: "gs-p2-1",
+    patientId: "p2",
+    gameId: "memory_match",
+    domain: "Memory & Attention",
+    score: 74,
+    timeTaken: 92,
+    difficulty: "beginner",
+    result: "completed",
+    date: "2026-11-27T10:15:00.000Z"
+  },
+  {
+    id: "gs-p3-1",
+    patientId: "p3",
+    gameId: "memory_lane",
+    domain: "Recall",
+    score: 92,
+    timeTaken: 64,
+    difficulty: "pro",
+    result: "completed",
+    date: "2026-11-27T16:10:00.000Z"
   }
 ];
 
@@ -603,5 +971,77 @@ export const initialDomainStats: DomainStats[] = [
       { date: "2026-09-30", score: 81 },
       { date: "2026-10-01", score: 80 }
     ]
+  },
+  // Patient 2 (Savitri Devi) Domain Stats
+  {
+    patientId: "p2",
+    domain: "Memory & Attention",
+    runningAvg: 74,
+    baseline: 72,
+    history: [{ date: "2026-11-27", score: 74 }]
+  },
+  {
+    patientId: "p2",
+    domain: "Pattern Recognition & Attention",
+    runningAvg: 70,
+    baseline: 68,
+    history: [{ date: "2026-11-27", score: 70 }]
+  },
+  {
+    patientId: "p2",
+    domain: "Memory & Recall",
+    runningAvg: 76,
+    baseline: 72,
+    history: [{ date: "2026-11-27", score: 76 }]
+  },
+  {
+    patientId: "p2",
+    domain: "Recall",
+    runningAvg: 78,
+    baseline: 75,
+    history: [{ date: "2026-11-27", score: 78 }]
+  },
+  {
+    patientId: "p2",
+    domain: "Pattern Recognition",
+    runningAvg: 71,
+    baseline: 70,
+    history: [{ date: "2026-11-27", score: 71 }]
+  },
+  // Patient 3 (Dr. Ramesh Roy) Domain Stats
+  {
+    patientId: "p3",
+    domain: "Memory & Attention",
+    runningAvg: 88,
+    baseline: 84,
+    history: [{ date: "2026-11-27", score: 88 }]
+  },
+  {
+    patientId: "p3",
+    domain: "Pattern Recognition & Attention",
+    runningAvg: 85,
+    baseline: 82,
+    history: [{ date: "2026-11-27", score: 85 }]
+  },
+  {
+    patientId: "p3",
+    domain: "Memory & Recall",
+    runningAvg: 86,
+    baseline: 84,
+    history: [{ date: "2026-11-27", score: 86 }]
+  },
+  {
+    patientId: "p3",
+    domain: "Recall",
+    runningAvg: 92,
+    baseline: 86,
+    history: [{ date: "2026-11-27", score: 92 }]
+  },
+  {
+    patientId: "p3",
+    domain: "Pattern Recognition",
+    runningAvg: 84,
+    baseline: 82,
+    history: [{ date: "2026-11-27", score: 84 }]
   }
 ];

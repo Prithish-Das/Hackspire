@@ -1,7 +1,17 @@
 import React from "react";
-import { Pill, Droplet, Utensils, Check, Clock } from "lucide-react";
+import {
+  Pill,
+  Droplet,
+  Utensils,
+  Activity,
+  Stethoscope,
+  Sparkles,
+  Check,
+  Clock
+} from "lucide-react";
 import { Reminder } from "../../types";
 import { useLanguage } from "../../contexts/LanguageContext";
+import { getReminderCategory } from "../../utils/storage";
 import { SpeakButton } from "../common/SpeakButton";
 
 interface ReminderCardProps {
@@ -19,32 +29,47 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
 }) => {
   const { t } = useLanguage();
 
-  const isMedicine = reminder.type === "medicine";
-  const isWater = reminder.type === "water";
-  const isMeal = reminder.type === "meal";
+  const category = getReminderCategory(reminder);
+  const isWater = category === "Water Intake" || reminder.type === "water";
 
-  // Configuration per type
-  let badgeTitle = t("reminder.medicine.title");
-  let subText = reminder.instructions || t("reminder.medicine.sub");
+  let badgeTitle = t(`reminder.category.${category}`);
+  let subText =
+    reminder.description || reminder.instructions || reminder.notes || t("reminder.medicine.sub");
   let Icon = Pill;
   let cardBg = "bg-rose-50 border-rose-200";
   let iconBg = "bg-rose-100 text-rose-600";
-  let mainActionLabel = t("reminder.medicine.markTaken");
+  let mainActionLabel = t("reminders.markDone");
 
-  if (isWater) {
+  if (category === "Medicine") {
+    badgeTitle = t("reminder.medicine.title");
+    mainActionLabel = t("reminder.medicine.markTaken");
+  } else if (category === "Water Intake") {
     badgeTitle = t("reminder.water.title");
-    subText = t("reminder.water.sub");
+    subText = reminder.description || reminder.notes || t("reminder.water.sub");
     Icon = Droplet;
     cardBg = "bg-sky-50 border-sky-200";
     iconBg = "bg-sky-100 text-sky-600";
     mainActionLabel = t("reminder.water.btn");
-  } else if (isMeal) {
-    badgeTitle = t("reminder.meal.title");
-    subText = reminder.notes || t("reminder.meal.sub");
+  } else if (category === "Exercise") {
+    Icon = Activity;
+    cardBg = "bg-emerald-50 border-emerald-200";
+    iconBg = "bg-emerald-100 text-emerald-700";
+    mainActionLabel = t("reminders.markDone");
+  } else if (category === "Daily Activity") {
     Icon = Utensils;
     cardBg = "bg-amber-50 border-amber-200";
     iconBg = "bg-amber-100 text-amber-700";
     mainActionLabel = t("reminder.meal.btn");
+  } else if (category === "Doctor Appointment") {
+    Icon = Stethoscope;
+    cardBg = "bg-indigo-50 border-indigo-200";
+    iconBg = "bg-indigo-100 text-indigo-700";
+    mainActionLabel = t("reminders.markDone");
+  } else {
+    Icon = Sparkles;
+    cardBg = "bg-slate-50 border-slate-300";
+    iconBg = "bg-slate-200 text-slate-700";
+    mainActionLabel = t("reminders.markDone");
   }
 
   const handleMainAction = () => {
@@ -55,7 +80,10 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
     }
   };
 
-  const readoutText = `${badgeTitle}. ${reminder.title} ${reminder.dosage ? reminder.dosage : ""}. Scheduled for ${reminder.time}. ${subText}`;
+  const displayTime = reminder.scheduledTime || reminder.time;
+  const readoutText = `${badgeTitle}. ${reminder.title} ${
+    reminder.dosage ? reminder.dosage : ""
+  }. Scheduled for ${displayTime}. ${subText}`;
 
   return (
     <div
@@ -64,17 +92,17 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
       <div>
         {/* Header row with badge and speak button */}
         <div className="flex items-center justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2">
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${iconBg}`}>
+          <div className="flex items-center gap-2 min-w-0">
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${iconBg}`}>
               <Icon className="w-5 h-5" />
             </div>
-            <span className="text-xs font-bold tracking-wider uppercase text-slate-800">
+            <span className="text-xs font-bold tracking-wider uppercase text-slate-800 truncate">
               {badgeTitle}
             </span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-white/80 text-slate-700 border border-slate-200">
-              {reminder.time}
+              {displayTime}
             </span>
             <SpeakButton text={readoutText} id={`rem-speak-${reminder.id}`} size="sm" />
           </div>
@@ -83,9 +111,16 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
         {/* Title and details */}
         <h3 className="text-lg font-bold text-slate-900 mt-1">
           {reminder.title}
-          {reminder.dosage && <span className="ml-1 text-sm font-semibold text-slate-600">({reminder.dosage})</span>}
+          {reminder.dosage && (
+            <span className="ml-1.5 text-sm font-semibold text-slate-600">({reminder.dosage})</span>
+          )}
         </h3>
         <p className="text-xs sm:text-sm text-slate-600 mt-1 font-medium">{subText}</p>
+        {reminder.repeatFrequency && reminder.repeatFrequency !== "none" && (
+          <span className="inline-block mt-2 text-[11px] font-semibold px-2 py-0.5 rounded bg-white/80 text-slate-600 border border-slate-200/80">
+            {t(`reminder.repeat.${reminder.repeatFrequency}`)}
+          </span>
+        )}
       </div>
 
       {/* Action buttons: elder-friendly large touch targets */}

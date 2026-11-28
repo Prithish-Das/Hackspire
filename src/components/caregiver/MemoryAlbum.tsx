@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Plus,
   Trash2,
@@ -23,6 +23,12 @@ interface MemoryAlbumProps {
 export const MemoryAlbum: React.FC<MemoryAlbumProps> = ({ patientId }) => {
   const { t } = useLanguage();
   const [album, setAlbum] = useState<MemoryAlbumItem[]>(() => getMemoryAlbum(patientId));
+
+  useEffect(() => {
+    setAlbum(getMemoryAlbum(patientId));
+    setSelectedCategory("all");
+    setBrokenImages({});
+  }, [patientId]);
   const [selectedCategory, setSelectedCategory] = useState<AlbumCategory | "all">("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [replaceTarget, setReplaceTarget] = useState<MemoryAlbumItem | null>(null);

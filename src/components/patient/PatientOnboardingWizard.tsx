@@ -37,13 +37,15 @@ import {
   registerAccount,
   saveOnboardingDraft,
   setCurrentUser,
-  setSelectedPatientId
+  setSelectedPatientId,
+  updatePatient
 } from "../../utils/storage";
 import {
   INTEREST_OPTIONS,
   UNCOMFORTABLE_TOPIC_SUGGESTIONS
 } from "../../utils/contentFilter";
 import { syncPatientToBackend } from "../../services/gameApi";
+import { ensureBackendSession, registerWithBackend } from "../../services/connectionApi";
 
 interface PatientOnboardingWizardProps {
   initialEmail?: string;
@@ -481,10 +483,15 @@ export const PatientOnboardingWizard: React.FC<PatientOnboardingWizardProps> = (
     );
 
     const newPatientId = existingPatient?.id || `p-${Date.now()}`;
+    const generatedInviteCode =
+      existingPatient?.inviteCode ||
+      `PAT-${newPatientId.replace(/^p-?/, "").toUpperCase().slice(0, 8)}`;
     const regionLabel = [cleanCity, cleanState].filter(Boolean).join(", ");
 
     const patientRecord: Patient = {
       id: newPatientId,
+      userId: existingUser?.id,
+      inviteCode: generatedInviteCode,
       name: cleanName,
       age: numericAge,
       birthYear,
@@ -493,7 +500,8 @@ export const PatientOnboardingWizard: React.FC<PatientOnboardingWizardProps> = (
       state: cleanState,
       language: preferredLanguage,
       interests: flatInterests,
-      caretakerId: existingPatient?.caretakerId || "c1",
+      caretakerId: existingPatient?.caretakerId || "",
+      caretakerIds: existingPatient?.caretakerIds || [],
       doctorIds: existingPatient?.doctorIds || ["d1"],
       emergencyContact: existingPatient?.emergencyContact,
       baselineScore: existingPatient?.baselineScore ?? 75,
@@ -507,7 +515,7 @@ export const PatientOnboardingWizard: React.FC<PatientOnboardingWizardProps> = (
       },
       medicalInfo,
       familyInfo: cleanedFamily,
-      structuredInterests,
+      structuredInterests: structuredInterests,
       dislikes
     };
 
@@ -518,14 +526,17 @@ export const PatientOnboardingWizard: React.FC<PatientOnboardingWizardProps> = (
       activeUser = {
         ...existingUser,
         name: cleanName,
+        inviteCode: existingUser.inviteCode || savedPatient.inviteCode || generatedInviteCode,
         patientId: savedPatient.id
       };
+      void ensureBackendSession(activeUser);
     } else {
       const reg = registerAccount({
         name: cleanName,
         email: initialEmail || `${savedPatient.id}@recalled.care`,
         password: passwordForSignup || "recalled123",
         role: "patient",
+        inviteCode: savedPatient.inviteCode || generatedInviteCode,
         patientId: savedPatient.id
       });
 
@@ -539,8 +550,28 @@ export const PatientOnboardingWizard: React.FC<PatientOnboardingWizardProps> = (
         name: reg.account.name,
         email: reg.account.email,
         role: "patient",
+        inviteCode: reg.account.inviteCode || generatedInviteCode,
         patientId: savedPatient.id
       };
+
+      updatePatient({
+        ...savedPatient,
+        userId: activeUser.id,
+        inviteCode: activeUser.inviteCode
+      });
+
+      void registerWithBackend({
+        id: activeUser.id,
+        name: activeUser.name,
+        email: activeUser.email,
+        password: passwordForSignup || "recalled123",
+        role: "patient",
+        inviteCode: activeUser.inviteCode,
+        patientId: savedPatient.id,
+        age: savedPatient.age,
+        region: savedPatient.region,
+        language: savedPatient.language
+      });
     }
 
     setCurrentUser(activeUser);

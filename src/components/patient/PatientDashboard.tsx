@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Flame,
   CheckCircle2,
@@ -7,23 +7,28 @@ import {
   BookOpen,
   Sparkles,
   Play,
-  Info
+  Info,
+  Check
 } from "lucide-react";
-import { Patient, Reminder, WaterQuantity } from "../../types";
+import { Patient, Reminder, User, WaterQuantity } from "../../types";
 import { useLanguage } from "../../contexts/LanguageContext";
 import {
+  getCurrentUser,
   getReminders,
-  updateReminderStatus,
   saveWaterEvent,
   getGameSessions,
-  getDomainStats
+  getDomainStats,
+  getReminderCategory,
+  isReminderCompleted
 } from "../../utils/storage";
+import { completeReminderApi, fetchPatientReminders } from "../../services/connectionApi";
 import { getDomainRecommendations } from "../../utils/adaptive";
 import { SpeakButton } from "../common/SpeakButton";
 import { ReminderCard } from "./ReminderCard";
 import { WaterConfirmDialog } from "./WaterConfirmDialog";
 
 interface PatientDashboardProps {
+  user?: User;
   patient: Patient;
   onNavigateToGames: () => void;
   onNavigateToMemoryLane: () => void;
@@ -31,40 +36,61 @@ interface PatientDashboardProps {
 }
 
 export const PatientDashboard: React.FC<PatientDashboardProps> = ({
+  user,
   patient,
   onNavigateToGames,
   onNavigateToMemoryLane,
   onNavigateToMedicine
 }) => {
   const { t } = useLanguage();
+  const activeUser = user || getCurrentUser();
 
-  const [reminders, setReminders] = useState<Reminder[]>(() => getReminders(patient.id));
+  const [reminders, setReminders] = useState<Reminder[]>(() =>
+    getReminders(patient.id).filter((r) => r.isActive !== false)
+  );
   const [activeWaterPrompt, setActiveWaterPrompt] = useState<Reminder | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setReminders(getReminders(patient.id).filter((r) => r.isActive !== false));
+    void fetchPatientReminders(activeUser, patient.id).then((list) => {
+      if (mounted) {
+        setReminders(list.filter((r) => r.isActive !== false));
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [patient.id, activeUser?.id]);
 
   const domainStats = getDomainStats(patient.id);
   const gameSessions = getGameSessions(patient.id);
   const { weakestDomain } = getDomainRecommendations(patient.id);
 
-  // Filter due / upcoming reminders
-  const dueReminders = reminders.filter(
-    (r) => r.status === "upcoming" || r.status === "snoozed"
-  );
+  // Filter due / upcoming active reminders and completed reminders
+  const dueReminders = reminders
+    .filter((r) => r.isActive !== false && !isReminderCompleted(r))
+    .sort((a, b) => (a.scheduledTime || a.time).localeCompare(b.scheduledTime || b.time));
 
-  const handleMarkTaken = (id: string) => {
-    updateReminderStatus(id, "taken");
-    setReminders(getReminders(patient.id));
+  const completedToday = reminders.filter((r) => r.isActive !== false && isReminderCompleted(r));
+
+  const handleMarkTaken = async (id: string) => {
+    const target = reminders.find((r) => r.id === id);
+    const status = target?.type === "medicine" ? "taken" : "completed";
+    await completeReminderApi(activeUser, id, status);
+    setReminders(getReminders(patient.id).filter((r) => r.isActive !== false));
   };
 
-  const handleSnooze = (id: string) => {
-    updateReminderStatus(id, "snoozed", {
+  const handleSnooze = async (id: string) => {
+    await completeReminderApi(activeUser, id, "snoozed", {
       snoozedUntil: new Date(Date.now() + 15 * 60 * 1000).toISOString()
     });
-    setReminders(getReminders(patient.id));
+    setReminders(getReminders(patient.id).filter((r) => r.isActive !== false));
   };
 
-  const handleWaterConfirm = (qty: WaterQuantity) => {
+  const handleWaterConfirm = async (qty: WaterQuantity) => {
     if (activeWaterPrompt) {
-      updateReminderStatus(activeWaterPrompt.id, "taken");
+      await completeReminderApi(activeUser, activeWaterPrompt.id, "taken");
       saveWaterEvent({
         id: `we-${Date.now()}`,
         reminderId: activeWaterPrompt.id,
@@ -75,7 +101,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
         selfReportedQty: qty,
         verificationSource: "self-report"
       });
-      setReminders(getReminders(patient.id));
+      setReminders(getReminders(patient.id).filter((r) => r.isActive !== false));
     }
     setActiveWaterPrompt(null);
   };
@@ -139,14 +165,14 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
             <button
               type="button"
               onClick={onNavigateToMedicine}
-              className="text-xs sm:text-sm font-semibold text-blue-600 hover:text-blue-800"
+              className="text-xs sm:text-sm font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
             >
               {t("common.view")} All
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {dueReminders.slice(0, 3).map((reminder) => (
+            {dueReminders.slice(0, 6).map((reminder) => (
               <ReminderCard
                 key={reminder.id}
                 reminder={reminder}
@@ -154,6 +180,41 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                 onWaterPrompt={(rem) => setActiveWaterPrompt(rem)}
                 onSnooze={handleSnooze}
               />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Completed Today Summary */}
+      {completedToday.length > 0 && (
+        <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-4 sm:p-5 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-emerald-900 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>
+                {t("reminders.completedToday")} ({completedToday.length})
+              </span>
+            </h3>
+            <button
+              type="button"
+              onClick={onNavigateToMedicine}
+              className="text-xs font-bold text-emerald-800 hover:underline cursor-pointer"
+            >
+              {t("common.view")} All
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {completedToday.slice(0, 6).map((rem) => (
+              <span
+                key={rem.id}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-emerald-200 text-xs font-semibold text-slate-800"
+              >
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{rem.title}</span>
+                <span className="text-[11px] text-slate-500">
+                  ({t(`reminder.category.${getReminderCategory(rem)}`)})
+                </span>
+              </span>
             ))}
           </div>
         </div>

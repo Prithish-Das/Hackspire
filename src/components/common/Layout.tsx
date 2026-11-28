@@ -18,7 +18,10 @@ import {
   LogOut,
   Flame,
   PhoneCall,
-  Activity
+  Activity,
+  HeartHandshake,
+  Users,
+  BellRing
 } from "lucide-react";
 import { Role, User, Patient } from "../../types";
 import { useLanguage } from "../../contexts/LanguageContext";
@@ -74,6 +77,7 @@ export const Layout: React.FC<LayoutProps> = ({
         { id: "memory-lane", label: t("nav.patient.memoryLane"), icon: BookOpen },
         { id: "progress", label: t("nav.patient.progress"), icon: TrendingUp },
         { id: "medicine", label: t("nav.patient.medicine"), icon: Pill },
+        { id: "caregivers", label: t("nav.patient.caregivers"), icon: HeartHandshake },
         { id: "help", label: t("nav.patient.help"), icon: HelpCircle },
         { id: "voice", label: t("nav.patient.voice"), icon: Mic, isVoice: true },
         { id: "profile", label: t("nav.patient.profile"), icon: UserIcon },
@@ -84,6 +88,8 @@ export const Layout: React.FC<LayoutProps> = ({
     if (user.role === "caretaker") {
       return [
         { id: "dashboard", label: t("nav.caretaker.dashboard"), icon: LayoutDashboard },
+        { id: "patients", label: t("nav.caretaker.patients"), icon: Users },
+        { id: "reminders", label: t("nav.caretaker.reminders"), icon: BellRing },
         { id: "alerts", label: t("nav.caretaker.alerts"), icon: Bell },
         { id: "memory-album", label: t("nav.caretaker.memoryAlbum"), icon: ImageIcon },
         { id: "prescriptions", label: t("nav.caretaker.prescriptions"), icon: FileText },

@@ -83,6 +83,8 @@ export interface PatientDislikes {
 
 export interface Patient {
   id: string;
+  userId?: string;
+  inviteCode?: string;
   name: string;
   age: number;
   birthYear: number;
@@ -92,6 +94,7 @@ export interface Patient {
   language: Language;
   interests: string[];
   caretakerId: string;
+  caretakerIds?: string[];
   doctorIds: string[];
   emergencyContact?: {
     name: string;
@@ -132,6 +135,8 @@ export interface RegisteredAccount {
   email: string;
   passwordHash: string;
   role: Role;
+  inviteCode?: string;
+  profileImage?: string;
   patientId?: string;
   caretakerId?: string;
   doctorId?: string;
@@ -140,9 +145,13 @@ export interface RegisteredAccount {
 
 export interface Caretaker {
   id: string;
+  userId?: string;
+  inviteCode?: string;
   name: string;
   email: string;
   phone: string;
+  profileImage?: string;
+  relationshipLabel?: string;
   patientIds: string[];
 }
 
@@ -161,9 +170,77 @@ export interface User {
   name: string;
   email: string;
   role: Role;
+  profileImage?: string;
+  inviteCode?: string;
   patientId?: string;
   caretakerId?: string;
   doctorId?: string;
+}
+
+export type ConnectionRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED";
+
+export interface ConnectionRequest {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  senderRole: Role;
+  receiverRole: Role;
+  senderName: string;
+  receiverName: string;
+  senderInviteCode?: string;
+  receiverInviteCode?: string;
+  senderProfileImage?: string;
+  receiverProfileImage?: string;
+  patientId?: string;
+  caregiverId?: string;
+  message?: string;
+  status: ConnectionRequestStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type RelationshipStatus = "ACTIVE" | "DISCONNECTED";
+
+export interface PatientCaregiverRelationship {
+  id: string;
+  patientId: string;
+  caregiverId: string;
+  patientUserId?: string;
+  caregiverUserId?: string;
+  connectedAt: string;
+  disconnectedAt?: string;
+  status: RelationshipStatus;
+}
+
+export interface ConnectionDirectoryProfile {
+  userId: string;
+  entityId: string;
+  name: string;
+  role: "patient" | "caretaker";
+  inviteCode: string;
+  profileImage?: string;
+  age?: number;
+  region?: string;
+  relationshipLabel?: string;
+  connectionStatus: "NONE" | "CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING";
+  pendingRequestId?: string;
+}
+
+export interface ConnectedPatientSummary {
+  patient: Patient;
+  relationshipId: string;
+  connectedAt: string;
+  caregiverId: string;
+  pendingRemindersCount: number;
+  completedRemindersCount: number;
+  latestActivity?: string;
+  averageScore: number;
+}
+
+export interface ConnectedCaregiverSummary {
+  caregiver: Caretaker;
+  relationshipId: string;
+  connectedAt: string;
 }
 
 export interface GameSession {
@@ -192,15 +269,35 @@ export interface DomainStats {
 export type ReminderType = "medicine" | "water" | "meal" | "general";
 export type ReminderStatus = "upcoming" | "taken" | "completed" | "missed" | "snoozed";
 
+export type ReminderCategory =
+  | "Medicine"
+  | "Water Intake"
+  | "Exercise"
+  | "Daily Activity"
+  | "Doctor Appointment"
+  | "Custom Reminder";
+
+export type RepeatFrequency = "none" | "daily" | "weekly" | "custom";
+
 export interface Reminder {
   id: string;
   patientId: string;
   type: ReminderType;
+  category?: ReminderCategory;
   title: string;
+  description?: string;
   time: string; // e.g. "08:00"
+  scheduledDate?: string; // YYYY-MM-DD
+  scheduledTime?: string; // HH:mm
+  repeatFrequency?: RepeatFrequency;
+  customRepeatNote?: string;
+  isActive?: boolean;
   status: ReminderStatus;
   snoozedUntil?: string;
   createdBy: string;
+  completedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
   dosage?: string;
   frequency?: string;
   instructions?: string;

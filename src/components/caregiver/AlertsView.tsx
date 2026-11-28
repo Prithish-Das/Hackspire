@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AlertCircle, CheckCircle2, Info, Bell, Trash2, Check } from "lucide-react";
 import { AlertItem } from "../../types";
 import { useLanguage } from "../../contexts/LanguageContext";
@@ -11,6 +11,10 @@ interface AlertsViewProps {
 export const AlertsView: React.FC<AlertsViewProps> = ({ patientId }) => {
   const { t } = useLanguage();
   const [alerts, setAlerts] = useState<AlertItem[]>(() => getAlerts(patientId));
+
+  useEffect(() => {
+    setAlerts(getAlerts(patientId));
+  }, [patientId]);
 
   const handleResolve = (id: string) => {
     resolveAlert(id);

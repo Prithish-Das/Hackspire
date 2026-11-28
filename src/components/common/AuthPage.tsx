@@ -21,6 +21,11 @@ import {
   setCurrentUser,
   setSelectedPatientId
 } from "../../utils/storage";
+import {
+  ensureBackendSession,
+  loginWithBackend,
+  registerWithBackend
+} from "../../services/connectionApi";
 import { PatientOnboardingWizard } from "../patient/PatientOnboardingWizard";
 
 interface AuthPageProps {
@@ -50,7 +55,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
   const existingDraft = getOnboardingDraft();
 
   // Demo Logins (preserved intact)
-  const handleDemoLogin = (role: Role) => {
+  const handleDemoLogin = async (role: Role) => {
     setErrorMsg(null);
     let demoUser: User;
 
@@ -60,6 +65,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         name: "Anand Sharma",
         email: "anand.sharma@example.com",
         role: "patient",
+        inviteCode: "PAT-ANAND-P1",
         patientId: "p1"
       };
       setSelectedPatientId("p1");
@@ -69,6 +75,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         name: "Priya Sharma",
         email: "priya.sharma@care.org",
         role: "caretaker",
+        inviteCode: "CARE-PRIYA-C1",
         caretakerId: "c1",
         patientId: "p1"
       };
@@ -86,6 +93,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
     }
 
     setCurrentUser(demoUser);
+    await ensureBackendSession(demoUser);
     onLoginSuccess(demoUser);
   };
 
@@ -99,7 +107,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
     setErrorMsg(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
@@ -113,12 +121,30 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
 
     if (mode === "login") {
       const result = authenticateAccount(cleanEmail, password, selectedRole);
-      if (!result.ok) {
-        setErrorMsg(result.error);
-        return;
-      }
+      let loggedUser: User | null = result.ok ? result.user : null;
 
-      const loggedUser = result.user;
+      if (!loggedUser) {
+        const backendRes = await loginWithBackend({
+          email: cleanEmail,
+          password,
+          role: selectedRole
+        });
+        if (backendRes.ok && backendRes.data?.user) {
+          loggedUser = backendRes.data.user;
+        } else {
+          setErrorMsg(result.ok ? "Login failed." : result.error);
+          return;
+        }
+      } else {
+        const backendLogin = await loginWithBackend({
+          email: cleanEmail,
+          password,
+          role: selectedRole
+        });
+        if (!backendLogin.ok) {
+          await ensureBackendSession(loggedUser);
+        }
+      }
 
       if (loggedUser.role === "patient") {
         const patientRecord = loggedUser.patientId
@@ -133,10 +159,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         if (loggedUser.patientId) {
           setSelectedPatientId(loggedUser.patientId);
         }
+      } else if (loggedUser.role === "caretaker") {
+        const accessible = getAccessiblePatientsForUser(loggedUser);
+        setSelectedPatientId(accessible[0]?.id || "");
       } else {
         const accessible = getAccessiblePatientsForUser(loggedUser);
-        const firstPid = accessible[0]?.id || "p1";
-        setSelectedPatientId(firstPid);
+        setSelectedPatientId(accessible[0]?.id || "p1");
       }
 
       setCurrentUser(loggedUser);
@@ -169,20 +197,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
 
     if (selectedRole === "caretaker") {
       const caretakerId = `c-${Date.now()}`;
-      const newCaretaker: Caretaker = {
-        id: caretakerId,
-        name: cleanName,
-        email: cleanEmail.toLowerCase(),
-        phone: phone.trim() || "+91 98000 00000",
-        patientIds: ["p1"]
-      };
-      saveCaretaker(newCaretaker);
+      const inviteCode = `CARE-${caretakerId.replace(/^c-?/, "").toUpperCase().slice(0, 8)}`;
 
       const reg = registerAccount({
         name: cleanName,
         email: cleanEmail,
         password,
         role: "caretaker",
+        inviteCode,
         caretakerId
       });
 
@@ -191,16 +213,38 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         return;
       }
 
+      const newCaretaker: Caretaker = {
+        id: caretakerId,
+        userId: reg.account.id,
+        inviteCode: reg.account.inviteCode || inviteCode,
+        name: cleanName,
+        email: cleanEmail.toLowerCase(),
+        phone: phone.trim() || "+91 98000 00000",
+        relationshipLabel: "Family Caregiver",
+        patientIds: []
+      };
+      saveCaretaker(newCaretaker);
+
       const user: User = {
         id: reg.account.id,
         name: reg.account.name,
         email: reg.account.email,
         role: "caretaker",
-        caretakerId,
-        patientId: "p1"
+        inviteCode: reg.account.inviteCode || inviteCode,
+        caretakerId
       };
+      await registerWithBackend({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        password,
+        role: "caretaker",
+        inviteCode: user.inviteCode,
+        caretakerId,
+        phone: newCaretaker.phone
+      });
       setCurrentUser(user);
-      setSelectedPatientId("p1");
+      setSelectedPatientId("");
       onLoginSuccess(user);
       return;
     }
@@ -239,6 +283,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
       doctorId,
       patientId: "p1"
     };
+    await registerWithBackend({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      password,
+      role: "doctor",
+      doctorId
+    });
     setCurrentUser(user);
     setSelectedPatientId("p1");
     onLoginSuccess(user);

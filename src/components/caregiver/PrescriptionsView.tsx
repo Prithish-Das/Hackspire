@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { FileText, Plus, Check, Download, Printer, Calendar, Clock, AlertTriangle } from "lucide-react";
-import { Prescription, Reminder } from "../../types";
+import { Prescription } from "../../types";
 import { useLanguage } from "../../contexts/LanguageContext";
-import { getPrescriptions, savePrescription, saveReminder, getReminders } from "../../utils/storage";
+import { getCurrentUser, getPrescriptions, savePrescription } from "../../utils/storage";
+import { createReminderApi } from "../../services/connectionApi";
 
 interface PrescriptionsViewProps {
   patientId: string;
@@ -16,10 +17,18 @@ export const PrescriptionsView: React.FC<PrescriptionsViewProps> = ({ patientId 
   const [selectedRx, setSelectedRx] = useState<Prescription | null>(null);
   const [confirmingRx, setConfirmingRx] = useState<Prescription | null>(null);
 
-  const handleAddToSchedule = (rx: Prescription) => {
-    // Add each medicine as a reminder in the shared reminder store
-    rx.medicines.forEach((med, idx) => {
-      // Determine default time based on timing string or fallback
+  useEffect(() => {
+    setPrescriptions(getPrescriptions(patientId));
+    setSelectedRx(null);
+    setConfirmingRx(null);
+  }, [patientId]);
+
+  const handleAddToSchedule = async (rx: Prescription) => {
+    const activeUser = getCurrentUser();
+    const today = new Date().toISOString().split("T")[0];
+
+    for (let idx = 0; idx < rx.medicines.length; idx++) {
+      const med = rx.medicines[idx];
       let scheduleTime = "08:00";
       if (med.timing.toLowerCase().includes("afternoon") || med.timing.includes("14:00")) {
         scheduleTime = "14:00";
@@ -29,21 +38,20 @@ export const PrescriptionsView: React.FC<PrescriptionsViewProps> = ({ patientId 
         scheduleTime = "20:00";
       }
 
-      const reminder: Reminder = {
-        id: `rem-rx-${rx.id}-${idx}-${Date.now()}`,
-        patientId,
-        type: "medicine",
-        title: med.name,
-        time: scheduleTime,
-        status: "upcoming",
-        dosage: med.dosage,
-        frequency: med.frequency,
-        instructions: med.instructions,
-        createdBy: rx.doctorId,
-        notes: `Doctor prescribed (${rx.doctorName})`
-      };
-      saveReminder(reminder);
-    });
+      if (activeUser) {
+        await createReminderApi(activeUser, {
+          patientId,
+          category: "Medicine",
+          title: med.name,
+          description: med.instructions || `Doctor prescribed (${rx.doctorName})`,
+          scheduledDate: today,
+          scheduledTime: scheduleTime,
+          repeatFrequency: "daily",
+          dosage: med.dosage,
+          isActive: true
+        });
+      }
+    }
 
     const updatedRx = { ...rx, addedToSchedule: true };
     savePrescription(updatedRx);
